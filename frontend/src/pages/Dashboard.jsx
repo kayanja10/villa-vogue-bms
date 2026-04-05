@@ -67,7 +67,7 @@ export default function Dashboard() {
   const askAI = useMutation({
     mutationFn: (q) => ai.insights({ question: q }),
     onSuccess: (res) => setAiResponse(res.data.answer),
-    onError: () => toast.error('AI unavailable. Add ANTHROPIC_API_KEY to backend .env'),
+    onError: (err) => toast.error('Could not reach AI service: ' + (err.response?.data?.error || 'Check backend logs')),
   });
 
   const markAllRead = useMutation({ mutationFn: () => notifications.markAllRead() });
