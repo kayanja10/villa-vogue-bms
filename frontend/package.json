@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npx vite",
-    "build": "npx vite build",
+    "dev": "chmod +x node_modules/.bin/vite && vite",
+    "build": "chmod +x node_modules/.bin/vite && vite build",
     "preview": "npx vite preview",
     "lint": "eslint src --ext js,jsx"
   },
