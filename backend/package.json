@@ -12,7 +12,9 @@
     "db:seed": "node src/utils/seed.js",
     "db:studio": "npx prisma studio",
     "migrate": "node src/utils/migrate.js",
-    "db:push": "npx prisma db push"
+    "db:push": "npx prisma db push",
+    "postinstall": "node_modules/.bin/prisma generate",
+    "build": "node_modules/.bin/prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
@@ -34,10 +36,11 @@
     "date-fns": "^3.3.1",
     "cloudinary": "^2.0.1",
     "morgan": "^1.10.0",
-    "compression": "^1.7.4"
+    "compression": "^1.7.4",
+    "prisma": "^5.10.0",
+    "axios": "^1.6.7"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0",
-    "prisma": "^5.10.0"
+    "nodemon": "^3.1.0"
   }
 }
