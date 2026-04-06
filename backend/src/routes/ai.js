@@ -12,7 +12,7 @@ async function buildContext() {
   const [monthOrders, monthExpenses, products, customerCount, debts, topCustomers] = await Promise.all([
     prisma.order.findMany({ where: { createdAt: { gte: monthStart }, orderStatus: { not: 'voided' } }, select: { total: true, paymentMethod: true } }),
     prisma.expense.findMany({ where: { createdAt: { gte: monthStart } }, select: { amount: true, category: true } }),
-    prisma.product.findMany({ where: { isActive: true }, select: { name: true, stock: true, lowStockThreshold: true, price: true, costPrice: true }, include: { stockMovements: { where: { type: 'out', reason: 'Sale', createdAt: { gte: thirtyAgo } }, select: { quantity: true } } } }),
+    prisma.product.findMany({ where: { isActive: true }, select: { name: true, stock: true, lowStockThreshold: true, price: true, costPrice: true, stockMovements: { where: { type: 'out', reason: 'Sale', createdAt: { gte: thirtyAgo } }, select: { quantity: true } } } }),
     prisma.customer.count({ where: { isActive: true } }),
     prisma.customerDebt.findMany({ where: { status: 'outstanding' }, select: { amount: true, paidAmount: true } }),
     prisma.customer.findMany({ orderBy: { totalSpent: 'desc' }, take: 5, select: { name: true, totalSpent: true, visitCount: true, tier: true } }),
@@ -123,7 +123,6 @@ function ruleBasedAnswer(ctx, question) {
     return lines.join('\n');
   }
 
-  // Default overview
   const lines = ['📊 **Villa Vogue Business Overview (This Month):**\n'];
   lines.push(`💰 Sales: UGX ${f.totalSales.toLocaleString()} | ${f.orderCount} orders`);
   lines.push(`💵 Profit: UGX ${f.netProfit.toLocaleString()} (${f.profitMargin})`);
@@ -172,7 +171,6 @@ Give bullet-pointed, practical advice based on the actual numbers above.`;
       }
     }
 
-    // Rule-based fallback (always works, no API needed)
     res.json({ answer: ruleBasedAnswer(ctx, question), source: 'rules', context: ctx });
   } catch (err) {
     console.error('AI insights error:', err);
