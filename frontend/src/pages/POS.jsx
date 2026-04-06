@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Search, Plus, Minus, Trash2, User, Tag, CreditCard, Smartphone, Banknote, CheckCircle, Printer, X, ShoppingCart, MessageCircle, Package } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, User, Tag, CreditCard, Smartphone, Banknote, CheckCircle, Printer, X, ShoppingCart, MessageCircle, Package, Percent } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { products as productApi, orders, customers, discounts, categories } from '../lib/api';
 import { useStore } from '../store/useStore';
@@ -26,6 +26,11 @@ export default function POS() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [showCustDrop, setShowCustDrop] = useState(false);
   const [amountPaid, setAmountPaid] = useState('');
+
+  // Manual discount state
+  const [manualDiscountValue, setManualDiscountValue] = useState('');
+  const [manualDiscountType, setManualDiscountType] = useState('fixed'); // 'fixed' or 'percent'
+
   const receiptRef = useRef();
 
   const { data: productsData, isLoading: loadingProds } = useQuery({
@@ -50,6 +55,7 @@ export default function POS() {
       setStep('success');
       clearCart();
       setDiscountCode('');
+      setManualDiscountValue('');
       qc.invalidateQueries(['dashboard']);
       qc.invalidateQueries(['products-pos']);
       qc.invalidateQueries(['products']);
@@ -63,6 +69,28 @@ export default function POS() {
     onSuccess: (res) => { setCartDiscount({ code: discountCode, amount: res.data.discountAmount, type: res.data.type }); toast.success('Discount applied!'); },
     onError: (err) => toast.error(err.response?.data?.error || 'Invalid code'),
   });
+
+  // Apply manual discount
+  const applyManualDiscount = () => {
+    const val = parseFloat(manualDiscountValue);
+    if (!val || val <= 0) return toast.error('Enter a valid discount amount');
+    if (manualDiscountType === 'percent') {
+      if (val > 100) return toast.error('Percentage cannot exceed 100%');
+      const amount = Math.round((subtotal * val) / 100);
+      setCartDiscount({ code: `${val}% off`, amount, type: 'percent' });
+      toast.success(`${val}% discount applied!`);
+    } else {
+      if (val > subtotal) return toast.error('Discount cannot exceed subtotal');
+      setCartDiscount({ code: `UGX ${val.toLocaleString()} off`, amount: val, type: 'fixed' });
+      toast.success(`UGX ${val.toLocaleString()} discount applied!`);
+    }
+  };
+
+  const removeDiscount = () => {
+    setCartDiscount({ code: '', amount: 0, type: 'fixed' });
+    setManualDiscountValue('');
+    setDiscountCode('');
+  };
 
   const { subtotal, discount, total } = getCartTotal();
 
@@ -243,18 +271,59 @@ export default function POS() {
 
         {cart.length > 0 && (
           <div className="border-t border-gray-100 dark:border-gray-800 p-3 space-y-3">
-            <div className="flex gap-2">
-              <input className="input text-xs py-2 flex-1" placeholder="Discount code" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} onKeyDown={e=>e.key==='Enter'&&discountCode&&applyDiscount.mutate()} />
-              <button onClick={()=>applyDiscount.mutate()} disabled={!discountCode} className="btn-secondary py-2 px-2 text-xs disabled:opacity-40"><Tag size={12}/></button>
-            </div>
-            {cartDiscount.amount>0 && <div className="flex justify-between text-xs text-green-600 bg-green-50 rounded-lg px-3 py-1.5"><span>✓ {cartDiscount.code}</span><span>-UGX {cartDiscount.amount?.toLocaleString()}</span></div>}
 
+            {/* Discount Section */}
+            {cartDiscount.amount > 0 ? (
+              <div className="flex justify-between items-center text-xs text-green-600 bg-green-50 rounded-lg px-3 py-2">
+                <span>✓ {cartDiscount.code}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">-UGX {cartDiscount.amount?.toLocaleString()}</span>
+                  <button onClick={removeDiscount} className="text-red-400 hover:text-red-600"><X size={12}/></button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {/* Manual discount input */}
+                <div className="flex gap-1.5">
+                  {/* Toggle % or UGX */}
+                  <button
+                    onClick={() => setManualDiscountType(t => t === 'fixed' ? 'percent' : 'fixed')}
+                    className={`shrink-0 px-2.5 py-2 rounded-lg text-xs font-bold border-2 transition-all ${manualDiscountType === 'percent' ? 'bg-[#C9A96E] border-[#C9A96E] text-white' : 'border-gray-200 text-gray-500'}`}
+                    title="Toggle between % and UGX">
+                    {manualDiscountType === 'percent' ? '%' : 'UGX'}
+                  </button>
+                  <input
+                    className="input text-xs py-2 flex-1"
+                    type="number"
+                    min="0"
+                    placeholder={manualDiscountType === 'percent' ? 'e.g. 10 for 10% off' : 'e.g. 5000 off total'}
+                    value={manualDiscountValue}
+                    onChange={e => setManualDiscountValue(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && manualDiscountValue && applyManualDiscount()}
+                  />
+                  <button
+                    onClick={applyManualDiscount}
+                    disabled={!manualDiscountValue}
+                    className="btn-secondary py-2 px-2.5 text-xs disabled:opacity-40">
+                    <Percent size={12}/>
+                  </button>
+                </div>
+                {/* OR discount code */}
+                <div className="flex gap-1.5">
+                  <input className="input text-xs py-2 flex-1" placeholder="Or enter discount code" value={discountCode} onChange={e=>setDiscountCode(e.target.value)} onKeyDown={e=>e.key==='Enter'&&discountCode&&applyDiscount.mutate()} />
+                  <button onClick={()=>applyDiscount.mutate()} disabled={!discountCode} className="btn-secondary py-2 px-2 text-xs disabled:opacity-40"><Tag size={12}/></button>
+                </div>
+              </div>
+            )}
+
+            {/* Totals */}
             <div className="text-sm space-y-1">
               <div className="flex justify-between text-gray-500"><span>Subtotal</span><span>UGX {subtotal.toLocaleString()}</span></div>
-              {discount>0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-UGX {discount.toLocaleString()}</span></div>}
+              {discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-UGX {discount.toLocaleString()}</span></div>}
               <div className="flex justify-between font-bold text-lg pt-1.5 border-t border-gray-100 dark:border-gray-800"><span>TOTAL</span><span className="text-[#A8824A]">UGX {total.toLocaleString()}</span></div>
             </div>
 
+            {/* Payment methods */}
             <div className="grid grid-cols-2 gap-1.5">
               {PAYMENT_METHODS.map(({id,label,icon:Icon,color})=>(
                 <button key={id} onClick={()=>setPayMethod(id)}
