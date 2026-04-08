@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { useStore } from './store/useStore';
 import { useSocket } from './hooks/useSocket';
-import { useSessionTimeout } from './hooks/useSessionTimeout';
+import { useSessionManager } from './hooks/useSessionManager';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -12,11 +12,12 @@ import POS from './pages/POS';
 import Reports from './pages/Reports';
 import CashBook from './pages/CashBook';
 import Analytics from './pages/Analytics.jsx';
+import SecurityCenter from './pages/SecurityCenter.jsx';
 import {
   Orders, Inventory, Customers, Expenses, Staff,
   Suppliers, Layaway, CustomerDebts,
   Quotations, PurchaseOrders, StockCount, CashFloat,
-  Discounts, Feedback, SecurityCenter, ActivityLog,
+  Discounts, Feedback, ActivityLog,
   UsersPage, SettingsPage,
 } from './pages/index.jsx';
 import CustomerPortal from './pages/customer/CustomerPortal';
@@ -26,10 +27,12 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000, refetchOnWindowFocus: false } },
 });
 
-function SocketInit() { useSocket(); return null; }
-
-// Session timeout runs inside BrowserRouter so it has access to navigate/location
-function SessionGuard() { useSessionTimeout(); return null; }
+// Session manager runs inside Router so it can navigate
+function SessionInit() {
+  useSocket();
+  useSessionManager();
+  return null;
+}
 
 function Guard({ children, admin, manager }) {
   const { user } = useStore();
@@ -46,13 +49,12 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <SocketInit />
-        <SessionGuard />
+        <SessionInit />
         <Toaster position="top-right" toastOptions={{
           style: { fontFamily: 'DM Sans, sans-serif', fontSize: '14px', borderRadius: '10px', border: '1px solid #f0ebe0' },
           success: { iconTheme: { primary: '#C9A96E', secondary: '#fff' } },
-          error:   { iconTheme: { primary: '#c0392b', secondary: '#fff' } },
-          duration: 3500,
+          error: { iconTheme: { primary: '#c0392b', secondary: '#fff' } },
+          duration: 4000,
         }} />
         <Routes>
           <Route path="/login" element={<Login />} />

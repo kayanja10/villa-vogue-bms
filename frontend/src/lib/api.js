@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE = 'https://villa-vogue-bms.onrender.com/api';
+const BASE = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({ baseURL: BASE, timeout: 30000 });
 
@@ -240,4 +240,13 @@ export const notifications = {
   markAllRead: () => api.put('/notifications/mark-all-read'),
   checkStock: () => api.post('/notifications/check-stock'),
 };
-// rebuild  
+
+export const sessions = {
+  start: () => api.post('/sessions/start', {}),
+  heartbeat: (sessionId) => api.post('/sessions/heartbeat', { sessionId }),
+  end: (sessionId) => api.post('/sessions/end', { sessionId }),
+  list: () => api.get('/sessions'),
+  forceLogout: (sessionId) => api.post(`/sessions/${sessionId}/force-logout`),
+  audit: (p) => api.get('/sessions/audit', { params: p }),
+  config: () => api.get('/sessions/config'),
+};

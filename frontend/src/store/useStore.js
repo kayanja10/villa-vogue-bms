@@ -8,16 +8,18 @@ export const useStore = create(
       user: null,
       token: null,
       refreshToken: null,
-      setAuth: (user, token, refreshToken) => {
+      setAuth: (user, token, refreshToken, sessionId) => {
         localStorage.setItem('vv_token', token);
         localStorage.setItem('vv_refresh', refreshToken || '');
         localStorage.setItem('vv_user', JSON.stringify(user));
+        if (sessionId) localStorage.setItem('vv_session', sessionId);
         set({ user, token, refreshToken });
       },
       logout: () => {
         localStorage.removeItem('vv_token');
         localStorage.removeItem('vv_refresh');
         localStorage.removeItem('vv_user');
+        localStorage.removeItem('vv_session');
         set({ user: null, token: null, refreshToken: null });
       },
 

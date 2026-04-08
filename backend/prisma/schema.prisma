@@ -498,3 +498,20 @@ model OnlineOrder {
 
   @@map("online_orders")
 }
+
+model SessionAudit {
+  id          Int       @id @default(autoincrement())
+  sessionId   String?
+  userId      Int
+  username    String
+  role        String
+  loginTime   DateTime
+  logoutTime  DateTime?
+  reason      String    // login | manual | timeout | force_logout
+  ip          String?
+  userAgent   String?
+  forcedBy    String?
+  createdAt   DateTime  @default(now())
+
+  @@map("session_audits")
+}

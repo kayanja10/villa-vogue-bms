@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { Eye, EyeOff, ShieldCheck, Mail, ArrowRight, RotateCcw } from 'lucide-react';
@@ -18,25 +18,6 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [countdown, setCountdown] = useState(0);
-
-  const logoutReason = sessionStorage.getItem('vv_logout_reason');
-  const redirectPath = sessionStorage.getItem('vv_redirect') || '/';
-
-  useEffect(() => {
-    if (logoutReason === 'timeout') {
-      toast('🔒 You were signed out due to inactivity', {
-        style: {
-          background: '#fffbeb',
-          border: '1px solid #fbbf24',
-          borderRadius: 12,
-          fontSize: 13,
-        },
-        duration: 5000,
-        icon: null,
-      });
-      sessionStorage.removeItem('vv_logout_reason');
-    }
-  }, []);
 
   const startCountdown = () => {
     setCountdown(60);
@@ -58,10 +39,10 @@ export default function Login() {
         startCountdown();
         toast.success('Verification code sent to your email');
       } else {
-        setAuth(data.user, data.accessToken, data.refreshToken);
+        setAuth(data.user, data.accessToken, data.refreshToken, data.sessionId);
+        if (data.sessionId) localStorage.setItem('vv_session', data.sessionId);
         toast.success(`Welcome back, ${data.user.username}!`);
-        sessionStorage.removeItem('vv_redirect');
-        navigate(redirectPath, { replace: true });
+        navigate('/');
       }
     } catch (err) {
       const msg = err.response?.data?.error || 'Login failed';
@@ -94,8 +75,7 @@ export default function Login() {
       const { data } = await auth.verify2fa({ userId, code });
       setAuth(data.user, data.accessToken, data.refreshToken);
       toast.success(`Welcome back, ${data.user.username}!`);
-      sessionStorage.removeItem('vv_redirect');
-      navigate(redirectPath, { replace: true });
+      navigate('/');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Invalid code');
       setOtp(['', '', '', '', '', '']);

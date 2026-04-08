@@ -25,7 +25,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/', rateLimit({ windowMs: 15*60*1000, max: 500 }));
 
 // Auth
-app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 10 }), require('./routes/auth'));
+app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20 }), require('./routes/auth'));
 
 // Core routes
 app.use('/api/users', require('./routes/users'));
@@ -34,11 +34,13 @@ app.use('/api/customers', require('./routes/customers'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/payments', require('./routes/payments'));
 app.use('/api/analytics', require('./routes/analytics'));
-
-// New routes
 app.use('/api/ai', require('./routes/ai'));
 app.use('/api/cashbook', require('./routes/cashbook'));
 app.use('/api/notifications', require('./routes/notifications'));
+
+// Sessions
+const { router: sessionsRouter } = require('./routes/sessions');
+app.use('/api/sessions', sessionsRouter);
 
 // Combined routes
 const {
@@ -65,9 +67,18 @@ app.use('/api/cash-float', cashFloatRouter);
 app.use('/api/purchase-orders', purchaseOrdersRouter);
 app.use('/api/uploads', uploadsRouter);
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.1.0', timestamp: new Date().toISOString() }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.2.0', timestamp: new Date().toISOString() }));
 
-require('./sockets/socketHandler')(io);
+// Socket.io - join session room for targeted events
+io.on('connection', (socket) => {
+  socket.on('join:session', (sessionId) => {
+    socket.join(`session:${sessionId}`);
+  });
+  socket.on('join:room', (room) => {
+    socket.join(room);
+  });
+  socket.on('disconnect', () => {});
+});
 
 app.use((err, req, res, next) => {
   console.error('Error:', err.message);
@@ -75,5 +86,5 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Villa Vogue BMS v2.1 → http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Villa Vogue BMS v2.2 → http://localhost:${PORT}`));
 module.exports = { app, io };
