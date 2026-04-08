@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { useStore } from './store/useStore';
 import { useSocket } from './hooks/useSocket';
+import { useSessionTimeout } from './hooks/useSessionTimeout';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -27,6 +28,9 @@ const queryClient = new QueryClient({
 
 function SocketInit() { useSocket(); return null; }
 
+// Session timeout runs inside BrowserRouter so it has access to navigate/location
+function SessionGuard() { useSessionTimeout(); return null; }
+
 function Guard({ children, admin, manager }) {
   const { user } = useStore();
   if (!user) return <Navigate to="/login" replace />;
@@ -43,10 +47,11 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <SocketInit />
+        <SessionGuard />
         <Toaster position="top-right" toastOptions={{
           style: { fontFamily: 'DM Sans, sans-serif', fontSize: '14px', borderRadius: '10px', border: '1px solid #f0ebe0' },
           success: { iconTheme: { primary: '#C9A96E', secondary: '#fff' } },
-          error: { iconTheme: { primary: '#c0392b', secondary: '#fff' } },
+          error:   { iconTheme: { primary: '#c0392b', secondary: '#fff' } },
           duration: 3500,
         }} />
         <Routes>
