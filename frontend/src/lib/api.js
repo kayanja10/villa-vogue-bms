@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE = import.meta.env.VITE_API_URL || '/api';
+const BASE = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
 
 const api = axios.create({ baseURL: BASE, timeout: 30000 });
 
@@ -196,17 +196,14 @@ export const purchaseOrders = {
   updateStatus: (id, d) => api.put(`/purchase-orders/${id}/status`, d),
 };
 
-// Image upload — tries Cloudinary, falls back to base64 stored as data URL
 export const uploads = {
   image: async (file) => {
-    // Try Cloudinary first
     try {
       const fd = new FormData();
       fd.append('image', file);
       const res = await api.post('/uploads/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       return res;
     } catch {
-      // Fallback: convert to base64 data URL (stored directly)
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve({ data: { url: reader.result, publicId: null, fallback: true } });
