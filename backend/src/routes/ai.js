@@ -42,7 +42,7 @@ async function buildContext() {
     }),
     prisma.order.findMany({
       where: { createdAt: { gte: monthStart }, orderStatus: { not: 'voided' } },
-      include: { items: { include: { product: { select: { name: true, category: { select: { name: true } } } } } } },
+      select: { total: true, paymentMethod: true, orderStatus: true, items: true },
     }),
     prisma.order.findMany({
       where: { createdAt: { gte: lastMonthStart, lte: lastMonthEnd }, orderStatus: { not: 'voided' } },
@@ -174,10 +174,13 @@ async function buildContext() {
   const totalOutstanding = outstandingDebts.reduce((s, d) => s + d.outstanding, 0);
 
   // ── CATEGORY PERFORMANCE ──
+  // items is stored as a JSON string in the DB — parse it before use
   const categoryPerf = {};
   monthOrders.forEach(o => {
-    o.items?.forEach(item => {
-      const cat = item.product?.category?.name || 'Unknown';
+    let parsedItems = [];
+    try { parsedItems = JSON.parse(o.items || '[]'); } catch { parsedItems = []; }
+    parsedItems.forEach(item => {
+      const cat = item.category || item.categoryName || 'Unknown';
       if (!categoryPerf[cat]) categoryPerf[cat] = { revenue: 0, units: 0 };
       categoryPerf[cat].revenue += (item.price || 0) * (item.quantity || 1);
       categoryPerf[cat].units += item.quantity || 1;
