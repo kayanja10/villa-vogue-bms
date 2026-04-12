@@ -7,14 +7,12 @@ const prisma = new PrismaClient();
 // ─── BUILD FULL BUSINESS CONTEXT ────────────────────────────────────────────
 async function buildContext() {
   const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
   const sevenAgo = new Date(now.getTime() - 7 * 86400000);
   const fourteenAgo = new Date(now.getTime() - 14 * 86400000);
   const thirtyAgo = new Date(now.getTime() - 30 * 86400000);
-  const sixtyAgo = new Date(now.getTime() - 60 * 86400000);
 
   const [
     allProducts,
@@ -30,6 +28,7 @@ async function buildContext() {
     stockMovements7,
     stockMovements14,
   ] = await Promise.all([
+    // Products with category relation and recent stock movements (both valid relations)
     prisma.product.findMany({
       where: { isActive: true },
       include: {
@@ -40,6 +39,7 @@ async function buildContext() {
         },
       },
     }),
+    // monthOrders — items is a String field (JSON), not a relation; select it directly
     prisma.order.findMany({
       where: { createdAt: { gte: monthStart }, orderStatus: { not: 'voided' } },
       select: { total: true, paymentMethod: true, orderStatus: true, items: true },
@@ -64,9 +64,20 @@ async function buildContext() {
       where: { createdAt: { gte: lastMonthStart, lte: lastMonthEnd } },
       select: { amount: true },
     }),
+    // Customer model fields: id, name, email, phone, totalSpent, visitCount, tier, createdAt
+    // — no lastVisit field in schema
     prisma.customer.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, email: true, phone: true, totalSpent: true, visitCount: true, tier: true, lastVisit: true, createdAt: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        totalSpent: true,
+        visitCount: true,
+        tier: true,
+        createdAt: true,
+      },
     }),
     prisma.customerDebt.findMany({
       where: { status: 'outstanding' },
@@ -107,7 +118,7 @@ async function buildContext() {
     const sold30 = p.stockMovements.filter(m => m.type === 'out' && m.reason === 'Sale').reduce((s, m) => s + m.quantity, 0);
     const dailyRate7 = sold7 / 7;
     const dailyRate30 = sold30 / 30;
-    const avgDailyRate = (dailyRate7 * 0.6 + dailyRate30 * 0.4); // weight recent sales more
+    const avgDailyRate = (dailyRate7 * 0.6 + dailyRate30 * 0.4);
     const daysUntilStockout = avgDailyRate > 0 ? Math.floor(p.stock / avgDailyRate) : null;
     const predicted7Days = Math.round(avgDailyRate * 7);
     const trendVsPrev = sold14prev > 0 ? (((sold7 - sold14prev) / sold14prev) * 100).toFixed(0) : null;
@@ -139,6 +150,7 @@ async function buildContext() {
   });
 
   // ── CUSTOMER INTELLIGENCE ──
+  // No lastVisit field in schema — use visitCount === 0 + createdAt as inactivity proxy.
   const inactiveThreshold = new Date(now.getTime() - 30 * 86400000);
   const highValueThreshold = allCustomers.length > 0
     ? allCustomers.reduce((s, c) => s + (c.totalSpent || 0), 0) / allCustomers.length * 1.5
@@ -146,13 +158,18 @@ async function buildContext() {
 
   const customerInsights = allCustomers.map(c => ({
     ...c,
-    isInactive: c.lastVisit ? new Date(c.lastVisit) < inactiveThreshold : true,
+    isInactive: c.visitCount === 0 && new Date(c.createdAt) < inactiveThreshold,
     isHighValue: (c.totalSpent || 0) >= highValueThreshold,
-    daysSinceVisit: c.lastVisit ? Math.floor((now - new Date(c.lastVisit)) / 86400000) : null,
+    daysSinceVisit: Math.floor((now - new Date(c.createdAt)) / 86400000),
   }));
 
-  const highValueCustomers = customerInsights.filter(c => c.isHighValue).sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
-  const inactiveCustomers = customerInsights.filter(c => c.isInactive && !c.isHighValue).slice(0, 10);
+  const highValueCustomers = customerInsights
+    .filter(c => c.isHighValue)
+    .sort((a, b) => b.totalSpent - a.totalSpent)
+    .slice(0, 5);
+  const inactiveCustomers = customerInsights
+    .filter(c => c.isInactive && !c.isHighValue)
+    .slice(0, 10);
   const atRiskHighValue = customerInsights.filter(c => c.isInactive && c.isHighValue);
 
   // ── PAYMENT INSIGHTS ──
@@ -174,13 +191,14 @@ async function buildContext() {
   const totalOutstanding = outstandingDebts.reduce((s, d) => s + d.outstanding, 0);
 
   // ── CATEGORY PERFORMANCE ──
-  // items is stored as a JSON string in the DB — parse it before use
+  // Order.items is a JSON string in the DB — must parse before iterating.
+  // Item shape (from POS): { name, category, price, quantity, ... }
   const categoryPerf = {};
   monthOrders.forEach(o => {
     let parsedItems = [];
     try { parsedItems = JSON.parse(o.items || '[]'); } catch { parsedItems = []; }
     parsedItems.forEach(item => {
-      const cat = item.category || item.categoryName || 'Unknown';
+      const cat = item.category || item.categoryName || item.cat || 'Unknown';
       if (!categoryPerf[cat]) categoryPerf[cat] = { revenue: 0, units: 0 };
       categoryPerf[cat].revenue += (item.price || 0) * (item.quantity || 1);
       categoryPerf[cat].units += item.quantity || 1;
@@ -241,7 +259,6 @@ Today is ${ctx.dayOfWeek}. Use this context to give timely advice (e.g. weekend 
 // ─── GENERATE STRUCTURED BI REPORT ──────────────────────────────────────────
 function generateBIReport(ctx) {
   const { financials: f, inventory: inv, customers: c, payments, debts, categoryPerformance } = ctx;
-  const now = new Date();
 
   // FORECAST
   const forecast = inv.topSellers.map(p => ({
@@ -286,7 +303,7 @@ function generateBIReport(ctx) {
       product: p.name, sku: p.sku, status: 'DEAD_STOCK',
       priority: 'LOW', stock: p.stock,
       message: `${p.name} has ${p.stock} units with zero sales in 30 days. Consider 15-25% discount or bundle promotion.`,
-      explanation: `No stock movements recorded in last 30 days. Capital is tied up in unsold inventory worth UGX ${(p.stock * p.costPrice).toLocaleString()}.`,
+      explanation: `No stock movements recorded in last 30 days. Capital tied up: UGX ${(p.stock * p.costPrice).toLocaleString()}.`,
     });
   });
 
@@ -299,7 +316,9 @@ function generateBIReport(ctx) {
       value: `UGX ${f.last7Sales.toLocaleString()} this week vs UGX ${f.prev7Sales.toLocaleString()} last week`,
       change: `${pct > 0 ? '+' : ''}${pct}%`,
       confidence: 'high',
-      message: pct >= 0 ? `Sales are up ${pct}% this week. Keep momentum with weekend promotions.` : `Sales dropped ${Math.abs(pct)}% this week. Consider a flash sale or WhatsApp promotion to boost traffic.`,
+      message: pct >= 0
+        ? `Sales are up ${pct}% this week. Keep momentum with weekend promotions.`
+        : `Sales dropped ${Math.abs(pct)}% this week. Consider a flash sale or WhatsApp promotion to boost traffic.`,
       explanation: 'Comparison of last 7 days vs previous 7 days of completed orders.',
     });
   }
@@ -356,7 +375,9 @@ function generateBIReport(ctx) {
       visits: cu.visitCount,
       tier: cu.tier,
       daysSinceVisit: cu.daysSinceVisit,
-      action: cu.daysSinceVisit > 14 ? `Call ${cu.name} — hasn't visited in ${cu.daysSinceVisit} days. Offer VIP preview or personal discount.` : `${cu.name} is active. Maintain relationship with loyalty reward.`,
+      action: cu.daysSinceVisit > 14
+        ? `Call ${cu.name} — hasn't visited in ${cu.daysSinceVisit} days. Offer VIP preview or personal discount.`
+        : `${cu.name} is active. Maintain relationship with loyalty reward.`,
       explanation: `Customer has spent UGX ${(cu.totalSpent || 0).toLocaleString()} total across ${cu.visitCount} visits.`,
     });
   });
@@ -475,7 +496,6 @@ router.post('/insights', authenticate, requireManagerOrAdmin, async (req, res) =
       answer = `🚨 **Active Alerts:**\n\n`;
       report.alerts.forEach(a => { answer += `${a.icon} [${a.level}] ${a.message}\n`; });
     } else {
-      // Full overview
       answer = `📊 **Villa Vogue Business Intelligence Overview:**\n\n`;
       answer += `💰 Sales: UGX ${ctx.financials.totalSales.toLocaleString()} | Profit: UGX ${ctx.financials.netProfit.toLocaleString()} (${ctx.financials.profitMargin}%)\n`;
       if (ctx.financials.salesChangePercent) answer += `📈 Weekly trend: ${ctx.financials.salesChangePercent}% vs last week\n`;
@@ -504,7 +524,6 @@ router.get('/summary', authenticate, requireManagerOrAdmin, async (req, res) => 
 
     const insights = [];
 
-    // Profit status
     if (f.netProfit > 0) {
       insights.push({ type: 'positive', icon: '💰', title: 'Profitable Month', message: `UGX ${f.netProfit.toLocaleString()} profit — ${f.profitMargin}% margin.${f.salesVsLastMonth ? ` Sales ${parseFloat(f.salesVsLastMonth) > 0 ? 'up' : 'down'} ${Math.abs(f.salesVsLastMonth)}% vs last month.` : ''}` });
     } else if (f.totalSales > 0) {
@@ -513,33 +532,27 @@ router.get('/summary', authenticate, requireManagerOrAdmin, async (req, res) => 
       insights.push({ type: 'info', icon: '📊', title: 'No Sales Yet', message: 'No sales recorded this month.' });
     }
 
-    // Weekly trend
     if (f.salesChangePercent !== null) {
       const pct = parseFloat(f.salesChangePercent);
       insights.push({ type: pct >= 0 ? 'positive' : 'warning', icon: pct >= 0 ? '📈' : '📉', title: `Weekly Sales ${pct >= 0 ? 'Up' : 'Down'} ${Math.abs(pct)}%`, message: `UGX ${f.last7Sales.toLocaleString()} this week vs UGX ${f.prev7Sales.toLocaleString()} last week.` });
     }
 
-    // Stock alerts
     report.alerts.filter(a => a.level === 'CRITICAL' || a.level === 'URGENT').slice(0, 3).forEach(a => {
       insights.push({ type: 'danger', icon: a.icon, title: a.level, message: a.message });
     });
 
-    // Top seller
     const top = ctx.inventory.topSellers.find(p => p.sold30 > 0);
     if (top) insights.push({ type: 'positive', icon: '⭐', title: 'Best Seller', message: `${top.name}: ${top.sold30} units sold, ${top.margin}% margin.` });
 
-    // Dead stock
     if (ctx.inventory.deadStock.length > 0) {
       const capital = ctx.inventory.deadStock.reduce((s, p) => s + p.stock * p.costPrice, 0);
       insights.push({ type: 'warning', icon: '🐌', title: `${ctx.inventory.deadStock.length} Products Not Selling`, message: `UGX ${capital.toLocaleString()} tied up. Consider promotions.` });
     }
 
-    // At-risk customers
     if (ctx.customers.atRiskHighValue.length > 0) {
       insights.push({ type: 'warning', icon: '👑', title: 'High-Value Customers at Risk', message: `${ctx.customers.atRiskHighValue.map(c => c.name).join(', ')} haven't visited recently.` });
     }
 
-    // Debts
     if (f.totalOutstanding > 0) {
       insights.push({ type: 'warning', icon: '📋', title: 'Outstanding Debts', message: `UGX ${f.totalOutstanding.toLocaleString()} owed by customers.` });
     }
