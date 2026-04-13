@@ -373,12 +373,66 @@ const debtsRouter = makeRouter((r) => {
 
 // ────────────────────────────────────────
 // FEEDBACK
+// ── PUBLIC routes first (no auth) ───────
+// ── then authenticated staff routes ─────
 // ────────────────────────────────────────
 const feedbackRouter = makeRouter((r) => {
+
+  // GET /api/feedback/public-stats  — no auth, used by CustomerPortal
+  r.get('/public-stats', async (req, res) => {
+    try {
+      const allFeedback = await prisma.feedback.findMany({
+        where: { isVisible: true },
+        select: { rating: true },
+      });
+      const total = allFeedback.length;
+      const average = total > 0 ? allFeedback.reduce((s, f) => s + f.rating, 0) / total : 0;
+      const breakdown = [5, 4, 3, 2, 1].map(r => ({
+        rating: r,
+        count: allFeedback.filter(f => f.rating === r).length,
+      }));
+      res.json({ total, average: parseFloat(average.toFixed(1)), breakdown });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // GET /api/feedback/public  — no auth, used by CustomerPortal
+  r.get('/public', async (req, res) => {
+    try {
+      const feedbackList = await prisma.feedback.findMany({
+        where: { isVisible: true },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+        select: { id: true, customerName: true, rating: true, message: true, createdAt: true },
+      });
+      res.json({ feedback: feedbackList, total: feedbackList.length });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // POST /api/feedback/public  — no auth, customer portal review submissions
+  r.post('/public', async (req, res) => {
+    try {
+      const { name, rating, message } = req.body;
+      if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+      const fb = await prisma.feedback.create({
+        data: {
+          customerName: name || 'Anonymous',
+          rating: parseInt(rating) || 5,
+          message: message.trim(),
+          source: 'portal',
+          isVisible: true,
+        },
+      });
+      res.status(201).json(fb);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // GET /api/feedback  — staff/admin only
   r.get('/', authenticate, async (req, res) => {
     const fb = await prisma.feedback.findMany({ orderBy: { createdAt: 'desc' }, take: 100, include: { customer: { select: { name: true } } } });
     res.json(fb);
   });
+
+  // GET /api/feedback/stats  — staff/admin only
   r.get('/stats', authenticate, async (req, res) => {
     try {
       const [avg, total] = await Promise.all([
@@ -392,11 +446,14 @@ const feedbackRouter = makeRouter((r) => {
       res.json({ averageRating: avg._avg.rating || 0, totalReviews: total, distribution });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
+
+  // POST /api/feedback  — staff manually adding feedback
   r.post('/', async (req, res) => {
     const { customerId, customerName, rating, comment, category } = req.body;
     const fb = await prisma.feedback.create({ data: { customerId: customerId ? parseInt(customerId) : null, customerName, rating: parseInt(rating), comment, category } });
     res.status(201).json(fb);
   });
+
 });
 
 // ────────────────────────────────────────
@@ -470,8 +527,7 @@ const uploadsRouter = makeRouter((r) => {
     try {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-      // Try Cloudinary if configured
-      const hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME && 
+      const hasCloudinary = process.env.CLOUDINARY_CLOUD_NAME &&
         process.env.CLOUDINARY_CLOUD_NAME !== 'your_cloud_name' &&
         process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
 
@@ -488,7 +544,6 @@ const uploadsRouter = makeRouter((r) => {
         }
       }
 
-      // Fallback: return as base64 data URL (works without any cloud service)
       const b64 = req.file.buffer.toString('base64');
       const dataUrl = `data:${req.file.mimetype};base64,${b64}`;
       res.json({ url: dataUrl, publicId: null, source: 'base64' });
