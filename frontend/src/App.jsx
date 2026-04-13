@@ -20,7 +20,7 @@ import {
   Discounts, Feedback, ActivityLog,
   UsersPage, SettingsPage,
 } from './pages/index.jsx';
-import CustomerPortal from './pages/customer/CustomerPortal';
+import CustomerPortal from './pages/CustomerPortal';
 import './index.css';
 
 const queryClient = new QueryClient({

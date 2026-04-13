@@ -176,10 +176,16 @@ export const discounts = {
 };
 
 export const feedback = {
-  list: () => api.get('/feedback'),
-  stats: () => api.get('/feedback/stats'),
-  create: (d) => api.post('/feedback', d),
-  delete: (id) => api.delete(`/feedback/${id}`),
+  // staff/admin (requires auth)
+  list:   ()    => api.get('/feedback'),
+  stats:  ()    => api.get('/feedback/stats'),
+  create: (d)   => api.post('/feedback', d),
+  delete: (id)  => api.delete(`/feedback/${id}`),
+
+  // public (no auth — used by CustomerPortal)
+  publicList:   ()  => api.get('/feedback/public'),
+  publicStats:  ()  => api.get('/feedback/public-stats'),
+  publicCreate: (d) => api.post('/feedback/public', d),
 };
 
 export const cashFloat = {
