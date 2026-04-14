@@ -8,7 +8,7 @@ import {
   Phone, Mail, MapPin, Instagram, Facebook, Clock, Truck,
   ShieldCheck, RefreshCw, ZoomIn
 } from 'lucide-react';
-import { products as productApi, feedback } from '../../lib/api';
+import { products as productApi, feedback } from '../lib/api';
 
 const WHATSAPP_NUMBER = '256782860372';
 const BRAND_GOLD = '#C9A96E';
