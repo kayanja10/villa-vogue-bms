@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { Eye, EyeOff, ShieldCheck, Mail, ArrowRight, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, ShieldCheck, Mail, ArrowRight, RotateCcw, ShoppingBag } from 'lucide-react';
 import { auth } from '../lib/api';
 import { useStore } from '../store/useStore';
 
@@ -255,7 +255,20 @@ export default function Login() {
           )}
         </div>
 
-        <p className="text-center text-gray-700 text-xs mt-6">
+        {/* Customer Store Link */}
+        <div className="mt-4">
+          <a
+            href="/store"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-[#C9A96E]/30 text-[#C9A96E] text-sm font-medium hover:bg-[#C9A96E]/10 transition-all duration-200"
+          >
+            <ShoppingBag size={16} />
+            Visit Our Store
+          </a>
+        </div>
+
+        <p className="text-center text-gray-700 text-xs mt-4">
           © {new Date().getFullYear()} Villa Vogue Fashions · Where Fashion Finds a Home
         </p>
       </div>
