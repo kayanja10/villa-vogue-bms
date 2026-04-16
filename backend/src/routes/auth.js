@@ -5,8 +5,17 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
+const { sendOtpEmail } = require('../services/emailService');
 
 const prisma = new PrismaClient();
+
+// ─── In-memory OTP store ─────────────────────────────────────────────────────
+// { [userId]: { code: '123456', expiresAt: Date } }
+const otpStore = new Map();
+
+function generateOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+}
 
 function generateTokens(user) {
   const payload = { userId: user.id, role: user.role, username: user.username };
@@ -18,9 +27,9 @@ function generateTokens(user) {
 // ─── POST /api/auth/login ────────────────────────────────────────────────────
 // Flow:
 //   1. Validate credentials
-//   2. If 2FA disabled → issue tokens immediately
-//   3. If 2FA enabled  → return { twoFaRequired: true, tempToken } 
-//      (client must call /api/auth/2fa/verify with the TOTP code + tempToken)
+//   2. If NOT admin → issue tokens immediately
+//   3. If admin → generate OTP → send to kayanjawilfred@gmail.com → return { twoFaRequired: true, tempToken }
+//      (client must call /api/auth/2fa/verify with the OTP code + tempToken)
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -44,20 +53,38 @@ router.post('/login', async (req, res) => {
     }
 
     // Reset failed attempts
-    await prisma.user.update({ where: { id: user.id }, data: { loginAttempts: 0, lockedUntil: null, lastLogin: new Date() } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { loginAttempts: 0, lockedUntil: null, lastLogin: new Date() },
+    });
 
-    // ── 2FA CHECK ──
-    if (user.twoFaEnabled && user.twoFaSecret) {
-      // Issue a short-lived temp token so the client can complete the 2FA step
+    // ── ADMIN 2FA via email OTP ──
+    if (user.role === 'admin') {
+      const code = generateOtp();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      // Store OTP in memory
+      otpStore.set(user.id, { code, expiresAt });
+
+      // Send OTP email
+      try {
+        await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
+      } catch (emailErr) {
+        console.error('Failed to send OTP email:', emailErr);
+        return res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
+      }
+
+      // Issue a short-lived temp token for the 2FA step
       const tempToken = jwt.sign(
         { userId: user.id, purpose: '2fa' },
         process.env.JWT_SECRET,
-        { expiresIn: '5m' }
+        { expiresIn: '10m' }
       );
+
       return res.json({ twoFaRequired: true, tempToken });
     }
 
-    // ── NO 2FA — issue full session ──
+    // ── NON-ADMIN — issue full session immediately ──
     const { accessToken, refreshToken } = generateTokens(user);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
@@ -85,13 +112,14 @@ router.post('/login', async (req, res) => {
 });
 
 // ─── POST /api/auth/2fa/verify ───────────────────────────────────────────────
-// Called after login when twoFaRequired === true.
+// Called after admin login when twoFaRequired === true.
 // Body: { tempToken, code }
 router.post('/2fa/verify', async (req, res) => {
   try {
     const { tempToken, code } = req.body;
     if (!tempToken || !code) return res.status(400).json({ error: 'tempToken and code required' });
 
+    // Verify temp token
     let decoded;
     try {
       decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
@@ -102,21 +130,26 @@ router.post('/2fa/verify', async (req, res) => {
     if (decoded.purpose !== '2fa') return res.status(401).json({ error: 'Invalid token' });
 
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-    if (!user || !user.isActive || !user.twoFaSecret) {
-      return res.status(401).json({ error: 'Invalid 2FA session' });
+    if (!user || !user.isActive) return res.status(401).json({ error: 'Invalid 2FA session' });
+
+    // Check OTP from store
+    const otpEntry = otpStore.get(user.id);
+    if (!otpEntry) {
+      return res.status(401).json({ error: 'No verification code found. Please log in again.' });
     }
 
-    const speakeasy = require('speakeasy');
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFaSecret,
-      encoding: 'base32',
-      token: code.replace(/\s/g, ''),
-      window: 1, // allow 1 step drift (30s either side)
-    });
+    if (new Date() > otpEntry.expiresAt) {
+      otpStore.delete(user.id);
+      return res.status(401).json({ error: 'Verification code expired. Please log in again.' });
+    }
 
-    if (!verified) return res.status(401).json({ error: 'Invalid 2FA code. Try again.' });
+    if (code.trim() !== otpEntry.code) {
+      return res.status(401).json({ error: 'Invalid verification code. Please try again.' });
+    }
 
-    // Code valid — issue full session
+    // Code valid — clear OTP and issue full session
+    otpStore.delete(user.id);
+
     const { accessToken, refreshToken } = generateTokens(user);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
@@ -143,117 +176,43 @@ router.post('/2fa/verify', async (req, res) => {
   }
 });
 
-// ─── POST /api/auth/2fa/setup ────────────────────────────────────────────────
-// Generates a new TOTP secret + QR code for the logged-in user.
-// The secret is NOT saved yet — user must confirm with /2fa/enable.
-router.post('/2fa/setup', authenticate, async (req, res) => {
+// ─── POST /api/auth/2fa/resend ────────────────────────────────────────────────
+// Resend OTP for an active 2FA session.
+// Body: { tempToken }
+router.post('/2fa/resend', async (req, res) => {
   try {
-    const speakeasy = require('speakeasy');
-    const QRCode = require('qrcode');
+    const { tempToken } = req.body;
+    if (!tempToken) return res.status(400).json({ error: 'tempToken required' });
 
-    const secret = speakeasy.generateSecret({
-      name: `Villa Vogue BMS (${req.user.username})`,
-      issuer: 'Villa Vogue BMS',
-      length: 20,
-    });
-
-    const qrDataUrl = await QRCode.toDataURL(secret.otpauth_url);
-
-    // Store the temp secret in the user row (twoFaSecret) but keep twoFaEnabled=false
-    // until they confirm with a valid code via /2fa/enable
-    await prisma.user.update({
-      where: { id: req.user.id },
-      data: { twoFaSecret: secret.base32 },
-    });
-
-    res.json({
-      secret: secret.base32,   // show to user as manual entry fallback
-      qrCode: qrDataUrl,        // base64 PNG to render as <img src=...>
-      message: 'Scan the QR code with Google Authenticator or Authy, then call /2fa/enable with a valid code to activate.',
-    });
-  } catch (err) {
-    console.error('2FA setup error:', err);
-    res.status(500).json({ error: '2FA setup failed: ' + err.message });
-  }
-});
-
-// ─── POST /api/auth/2fa/enable ───────────────────────────────────────────────
-// Confirms setup by verifying the first TOTP code, then enables 2FA.
-// Body: { code }
-router.post('/2fa/enable', authenticate, async (req, res) => {
-  try {
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ error: 'TOTP code required' });
-
-    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    if (!user.twoFaSecret) {
-      return res.status(400).json({ error: 'Run /2fa/setup first to generate a secret.' });
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: '2FA session expired. Please log in again.' });
     }
 
-    const speakeasy = require('speakeasy');
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFaSecret,
-      encoding: 'base32',
-      token: code.replace(/\s/g, ''),
-      window: 1,
-    });
+    if (decoded.purpose !== '2fa') return res.status(401).json({ error: 'Invalid token' });
 
-    if (!verified) return res.status(400).json({ error: 'Invalid code. Make sure your authenticator app is synced.' });
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user || !user.isActive || user.role !== 'admin') {
+      return res.status(401).json({ error: 'Invalid session' });
+    }
 
-    await prisma.user.update({ where: { id: req.user.id }, data: { twoFaEnabled: true } });
+    const code = generateOtp();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    otpStore.set(user.id, { code, expiresAt });
 
-    await prisma.activityLog.create({
-      data: { userId: user.id, username: user.username, action: '2fa_enabled', entityType: 'auth', details: '{}' }
-    }).catch(() => {});
+    try {
+      await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
+    } catch (emailErr) {
+      console.error('Failed to resend OTP email:', emailErr);
+      return res.status(500).json({ error: 'Failed to resend verification code. Please try again.' });
+    }
 
-    res.json({ message: '2FA enabled successfully. You will be asked for a code on every login.' });
+    res.json({ message: 'A new verification code has been sent to your email.' });
   } catch (err) {
-    console.error('2FA enable error:', err);
-    res.status(500).json({ error: '2FA enable failed: ' + err.message });
-  }
-});
-
-// ─── POST /api/auth/2fa/disable ──────────────────────────────────────────────
-// Disables 2FA. Requires the user's current TOTP code as confirmation.
-// Body: { code }
-router.post('/2fa/disable', authenticate, async (req, res) => {
-  try {
-    const { code } = req.body;
-    if (!code) return res.status(400).json({ error: 'TOTP code required to disable 2FA' });
-
-    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    if (!user.twoFaEnabled) return res.status(400).json({ error: '2FA is not enabled' });
-
-    const speakeasy = require('speakeasy');
-    const verified = speakeasy.totp.verify({
-      secret: user.twoFaSecret,
-      encoding: 'base32',
-      token: code.replace(/\s/g, ''),
-      window: 1,
-    });
-
-    if (!verified) return res.status(400).json({ error: 'Invalid code. 2FA not disabled.' });
-
-    await prisma.user.update({ where: { id: req.user.id }, data: { twoFaEnabled: false, twoFaSecret: null } });
-
-    await prisma.activityLog.create({
-      data: { userId: user.id, username: user.username, action: '2fa_disabled', entityType: 'auth', details: '{}' }
-    }).catch(() => {});
-
-    res.json({ message: '2FA disabled successfully.' });
-  } catch (err) {
-    console.error('2FA disable error:', err);
-    res.status(500).json({ error: '2FA disable failed: ' + err.message });
-  }
-});
-
-// ─── GET /api/auth/2fa/status ─────────────────────────────────────────────────
-router.get('/2fa/status', authenticate, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { twoFaEnabled: true } });
-    res.json({ twoFaEnabled: user.twoFaEnabled });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed' });
+    console.error('2FA resend error:', err);
+    res.status(500).json({ error: 'Resend failed: ' + err.message });
   }
 });
 

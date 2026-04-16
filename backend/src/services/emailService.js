@@ -11,6 +11,9 @@ const transporter = nodemailer.createTransport({
   tls: { rejectUnauthorized: false },
 });
 
+// ─── Send OTP email ───────────────────────────────────────────────────────────
+// Always sends to the admin email (kayanjawilfred@gmail.com).
+// `to` param is accepted for flexibility but .env EMAIL_USER is the real target.
 const sendOtpEmail = async (to, code, username) => {
   const html = `
     <!DOCTYPE html>
@@ -42,7 +45,7 @@ const sendOtpEmail = async (to, code, username) => {
         </div>
         <div class="body">
           <p class="greeting">Hello, <strong>${username}</strong>!</p>
-          <p style="color:#555; font-size:14px; line-height:1.6;">You requested a two-factor authentication code to sign in to Villa Vogue BMS. Use the code below:</p>
+          <p style="color:#555; font-size:14px; line-height:1.6;">An admin login was attempted for your Villa Vogue BMS account. Use the code below to complete sign-in:</p>
           <div class="otp-box">
             <div class="otp-label">Your Verification Code</div>
             <div class="otp-code">${code}</div>
@@ -51,7 +54,7 @@ const sendOtpEmail = async (to, code, username) => {
           <div class="warning">
             <strong>Security Notice:</strong> Never share this code with anyone. Villa Vogue staff will never ask for your OTP code.
           </div>
-          <p style="color:#555; font-size:13px;">If you did not request this code, please contact your system administrator immediately.</p>
+          <p style="color:#555; font-size:13px;">If you did not attempt to log in, please secure your account immediately and contact your system administrator.</p>
         </div>
         <div class="footer">
           <p>Villa Vogue Fashions &bull; Kampala, Uganda</p>
@@ -64,10 +67,10 @@ const sendOtpEmail = async (to, code, username) => {
 
   await transporter.sendMail({
     from: process.env.EMAIL_FROM || '"Villa Vogue BMS" <kayanjawilfred@gmail.com>',
-    to,
-    subject: `[${code}] Your Villa Vogue BMS Login Code`,
+    to: process.env.EMAIL_USER, // always send to kayanjawilfred@gmail.com regardless of `to` arg
+    subject: `[${code}] Your Villa Vogue BMS Admin Login Code`,
     html,
-    text: `Your Villa Vogue BMS verification code is: ${code}. It expires in 10 minutes. Do not share this code.`,
+    text: `Your Villa Vogue BMS admin verification code is: ${code}. It expires in 10 minutes. Do not share this code.`,
   });
 };
 
