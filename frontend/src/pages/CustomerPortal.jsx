@@ -247,7 +247,7 @@ function Hero() {
         <div className="max-w-xl">
           <div className="inline-flex items-center gap-2 bg-[#C9A96E]/15 border border-[#C9A96E]/25 rounded-full px-4 py-1.5 mb-6">
             <Sparkles size={11} className="text-[#C9A96E]" />
-            <span className="text-[#C9A96E] text-[11px] tracking-widest uppercase vv-body">New Collection 2025</span>
+            <span className="text-[#C9A96E] text-[11px] tracking-widest uppercase vv-body">New Collection 2026</span>
           </div>
           <h1 className="vv-display text-white text-5xl sm:text-[68px] font-light leading-[1.05] mb-5">
             Where Fashion<br /><em className="text-[#C9A96E] not-italic font-medium">Finds a Home</em>
@@ -956,7 +956,7 @@ function Footer() {
               </div>
               <span className="vv-display text-white text-lg">Villa Vogue</span>
             </div>
-            <p className="text-sm vv-body leading-relaxed mb-4">Premium fashion for the modern African woman. Where style meets culture.</p>
+            <p className="text-sm vv-body leading-relaxed mb-4">Premium fashion for the modern African person. Where style meets culture.</p>
             <div className="flex gap-3">
               {[{href:'https://instagram.com',icon:<Instagram size={14}/>},{href:'https://facebook.com',icon:<Facebook size={14}/>},{href:`https://wa.me/${WHATSAPP}`,icon:<MessageCircle size={14}/>}].map((s,i)=>(
                 <a key={i} href={s.href} target="_blank" rel="noopener noreferrer"
