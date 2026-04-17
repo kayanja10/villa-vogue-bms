@@ -4,7 +4,6 @@ import { useStore } from "../store/useStore";
 
 const API = import.meta.env.VITE_API_URL || "https://villa-vogue-bms.onrender.com/api";
 
-// ── Persists session to localStorage (keys match api.js interceptor) ──────────
 function saveSession(data) {
   localStorage.setItem("vv_token", data.accessToken);
   localStorage.setItem("vv_refresh", data.refreshToken);
@@ -12,11 +11,11 @@ function saveSession(data) {
   localStorage.setItem("vv_user", JSON.stringify(data.user));
 }
 
-// ── Fetch with retry — handles Render free-tier cold-start (30-60s sleep) ─────
-async function fetchWithRetry(url, options, retries = 3) {
+// FIX: 90s timeout (was 40s) — Render free tier cold starts take 60-90s
+async function fetchWithRetry(url, options, retries = 2) {
   for (let attempt = 1; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 40000); // 40s per attempt
+    const timer = setTimeout(() => controller.abort(), 90000);
     try {
       const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timer);
@@ -24,7 +23,7 @@ async function fetchWithRetry(url, options, retries = 3) {
     } catch (err) {
       clearTimeout(timer);
       if (attempt === retries) throw err;
-      await new Promise((r) => setTimeout(r, 2000)); // 2s between retries
+      await new Promise((r) => setTimeout(r, 3000));
     }
   }
 }
@@ -44,6 +43,9 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  // FIX: live elapsed counter so user sees server waking up — not a frozen screen
+  const [waitSecs, setWaitSecs] = useState(0);
+  const waitTimer = useRef(null);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -55,7 +57,15 @@ export default function Login() {
     if (phase === "otp") setTimeout(() => otpRefs.current[0]?.focus(), 120);
   }, [phase]);
 
-  // ── THE KEY FIX: finishLogin uses useStore + navigate instead of onLogin prop
+  function startWaitTimer() {
+    setWaitSecs(0);
+    waitTimer.current = setInterval(() => setWaitSecs((s) => s + 1), 1000);
+  }
+  function stopWaitTimer() {
+    clearInterval(waitTimer.current);
+    setWaitSecs(0);
+  }
+
   function finishLogin(data) {
     saveSession(data);
     setUser(data.user);
@@ -65,14 +75,16 @@ export default function Login() {
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
-    setSuccess("Connecting to server… (first load may take ~30s)");
+    setSuccess("Connecting…");
     setLoading(true);
+    startWaitTimer();
     try {
       const res = await fetchWithRetry(`${API}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       });
+      stopWaitTimer();
       const data = await res.json();
       setSuccess("");
       if (!res.ok) { setError(data.error || "Login failed"); return; }
@@ -85,11 +97,12 @@ export default function Login() {
         finishLogin(data);
       }
     } catch (err) {
+      stopWaitTimer();
       setSuccess("");
       if (err.name === "AbortError") {
-        setError("Server is starting up — please wait a moment and try again.");
+        setError("Server took too long. It may still be starting up — please try again in 30 seconds.");
       } else {
-        setError("Cannot reach the server. Check your internet and try again.");
+        setError("Cannot reach the server. Check your internet connection and try again.");
       }
     } finally {
       setLoading(false);
@@ -100,8 +113,7 @@ export default function Login() {
     e?.preventDefault();
     const code = otp.join("");
     if (code.length < 6) { setError("Please enter the full 6-digit code."); return; }
-    // Prevent double-submit
-    if (loading) return;
+    if (loading) return; // FIX: prevent double-submit
     setError("");
     setSuccess("Verifying…");
     setLoading(true);
@@ -115,21 +127,20 @@ export default function Login() {
       if (!res.ok) {
         setSuccess("");
         setError(data.error || "Verification failed");
-        setLoading(false); // only reset loading on failure
+        setLoading(false);
         if (res.status === 401 && data.error?.includes("log in again")) {
           setTimeout(() => { setPhase("credentials"); setOtp(["","","","","",""]); setTempToken(""); }, 1800);
         }
         return;
       }
       setSuccess("Verified! Signing you in…");
-      // Keep loading=true until navigation completes — do NOT put setLoading(false) in finally
-      finishLogin(data);
+      finishLogin(data); // FIX: no setTimeout delay — navigate immediately
     } catch (err) {
       setSuccess("");
       setError(err.name === "AbortError" ? "Server timeout. Please try again." : "Cannot reach the server. Try again.");
       setLoading(false);
     }
-    // Note: intentionally no finally { setLoading(false) } here to prevent flicker before navigation
+    // FIX: no finally setLoading(false) — keep spinner until page navigates
   }
 
   async function handleResend() {
@@ -252,8 +263,15 @@ export default function Login() {
               <div className="vv-heading">Sign In</div>
               <div className="vv-subheading">Enter your credentials to access the dashboard</div>
 
-              {error   && <div className="vv-alert vv-alert--error">{error}</div>}
-              {success && <div className="vv-alert vv-alert--info">{success}</div>}
+              {error && <div className="vv-alert vv-alert--error">{error}</div>}
+              {/* FIX: show live elapsed time so user knows server is waking, not frozen */}
+              {success && !error && (
+                <div className="vv-alert vv-alert--info">
+                  {loading && waitSecs > 3
+                    ? `Server is waking up… ${waitSecs}s (Render free tier can take up to 90s)`
+                    : success}
+                </div>
+              )}
 
               <form onSubmit={handleLogin} autoComplete="off">
                 <div className="vv-field">

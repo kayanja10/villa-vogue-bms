@@ -6,17 +6,13 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { sendOtpEmail } = require('../services/emailService');
-// FIX: Moved sessions require to module-level to prevent dynamic require() failures inside request handlers
+// FIX: module-level require — never inside a request handler
 const { createSession, TIMEOUTS, WARNINGS } = require('./sessions');
 
 const prisma = new PrismaClient();
 
-// ─── In-memory OTP store ─────────────────────────────────────────────────────
-// { [userId]: { code: '123456', expiresAt: Date } }
-const otpStore = new Map();
-
 function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString(); // 6 digits
+  return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 function generateTokens(user) {
@@ -26,7 +22,34 @@ function generateTokens(user) {
   return { accessToken, refreshToken };
 }
 
-// ─── POST /api/auth/login ────────────────────────────────────────────────────
+// ─── OTP helpers — stored in DB so Render restarts don't wipe them ────────────
+// Uses the User table's existing fields: twoFaSecret (code) + twoFaEnabled reused as expiry marker.
+// To avoid schema changes we store in a dedicated table via a raw JSON field on the user,
+// OR simply use a lightweight approach: store code+expiry as JSON in user.twoFaSecret column.
+// FIX: This replaces the in-memory otpStore Map which was wiped on every Render cold start.
+
+async function saveOtp(userId, code, expiresAt) {
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      // Store OTP as "code|expiryISO" in twoFaSecret field (already exists in schema)
+      twoFaSecret: `${code}|${expiresAt.toISOString()}`,
+    },
+  });
+}
+
+async function getOtp(userId) {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { twoFaSecret: true } });
+  if (!user?.twoFaSecret || !user.twoFaSecret.includes('|')) return null;
+  const [code, expiryStr] = user.twoFaSecret.split('|');
+  return { code, expiresAt: new Date(expiryStr) };
+}
+
+async function clearOtp(userId) {
+  await prisma.user.update({ where: { id: userId }, data: { twoFaSecret: null } });
+}
+
+// ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -35,7 +58,6 @@ router.post('/login', async (req, res) => {
     const user = await prisma.user.findFirst({ where: { OR: [{ username }, { email: username }] } });
     if (!user || !user.isActive) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // Check lockout
     if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
       const mins = Math.ceil((new Date(user.lockedUntil) - new Date()) / 60000);
       return res.status(423).json({ error: `Account locked. Try again in ${mins} minute(s).` });
@@ -49,31 +71,26 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: `Invalid credentials. ${5 - attempts} attempt(s) remaining.` });
     }
 
-    // Reset failed attempts
     await prisma.user.update({
       where: { id: user.id },
       data: { loginAttempts: 0, lockedUntil: null, lastLogin: new Date() },
     });
 
-    // ── ADMIN 2FA via email OTP ──
     if (user.role === 'admin') {
       const code = generateOtp();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-      // Store OTP in memory
-      otpStore.set(user.id, { code, expiresAt });
+      // FIX: save OTP to DB — survives Render restarts and cold starts
+      await saveOtp(user.id, code, expiresAt);
 
-      // Send OTP email
       try {
         await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
       } catch (emailErr) {
         console.error('Failed to send OTP email:', emailErr);
-        // FIX: Also clear OTP store on email failure to keep state consistent
-        otpStore.delete(user.id);
+        await clearOtp(user.id); // clean up on failure
         return res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
       }
 
-      // Issue a short-lived temp token for the 2FA step
       const tempToken = jwt.sign(
         { userId: user.id, purpose: '2fa' },
         process.env.JWT_SECRET,
@@ -83,22 +100,22 @@ router.post('/login', async (req, res) => {
       return res.json({ twoFaRequired: true, tempToken });
     }
 
-    // ── NON-ADMIN — issue full session immediately ──
+    // Non-admin — full session immediately
     const { accessToken, refreshToken } = generateTokens(user);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
-    // FIX: createSession/TIMEOUTS/WARNINGS now come from module-level require (not dynamic)
     const sessionId = createSession({ userId: user.id, username: user.username, role: user.role, ip, userAgent });
 
-    await prisma.sessionAudit.create({
-      data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent }
-    }).catch(() => {});
+    await Promise.allSettled([
+      prisma.sessionAudit.create({
+        data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent }
+      }),
+      prisma.activityLog.create({
+        data: { userId: user.id, username: user.username, action: 'login', entityType: 'auth', details: JSON.stringify({ role: user.role, ip }) }
+      }),
+    ]);
 
-    await prisma.activityLog.create({
-      data: { userId: user.id, username: user.username, action: 'login', entityType: 'auth', details: JSON.stringify({ role: user.role, ip }) }
-    }).catch(() => {});
-
-    res.json({
+    return res.json({
       accessToken, refreshToken, sessionId,
       timeoutMs: TIMEOUTS[user.role] || TIMEOUTS.staff,
       warningMs: WARNINGS[user.role] || WARNINGS.staff,
@@ -110,13 +127,12 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ─── POST /api/auth/2fa/verify ───────────────────────────────────────────────
+// ─── POST /api/auth/2fa/verify ────────────────────────────────────────────────
 router.post('/2fa/verify', async (req, res) => {
   try {
     const { tempToken, code } = req.body;
     if (!tempToken || !code) return res.status(400).json({ error: 'tempToken and code required' });
 
-    // Verify temp token
     let decoded;
     try {
       decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
@@ -129,14 +145,14 @@ router.post('/2fa/verify', async (req, res) => {
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
     if (!user || !user.isActive) return res.status(401).json({ error: 'Invalid 2FA session' });
 
-    // Check OTP from store
-    const otpEntry = otpStore.get(user.id);
+    // FIX: read OTP from DB — not in-memory map
+    const otpEntry = await getOtp(user.id);
     if (!otpEntry) {
       return res.status(401).json({ error: 'No verification code found. Please log in again.' });
     }
 
     if (new Date() > otpEntry.expiresAt) {
-      otpStore.delete(user.id);
+      await clearOtp(user.id);
       return res.status(401).json({ error: 'Verification code expired. Please log in again.' });
     }
 
@@ -144,16 +160,14 @@ router.post('/2fa/verify', async (req, res) => {
       return res.status(401).json({ error: 'Invalid verification code. Please try again.' });
     }
 
-    // Code valid — clear OTP and issue full session
-    otpStore.delete(user.id);
+    // Valid — clear OTP and issue session
+    await clearOtp(user.id);
 
     const { accessToken, refreshToken } = generateTokens(user);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
-    // FIX: Using module-level createSession/TIMEOUTS/WARNINGS (not dynamic require)
     const sessionId = createSession({ userId: user.id, username: user.username, role: user.role, ip, userAgent });
 
-    // FIX: Use Promise.allSettled so a DB write failure never blocks the login response
     await Promise.allSettled([
       prisma.sessionAudit.create({
         data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent }
@@ -163,7 +177,6 @@ router.post('/2fa/verify', async (req, res) => {
       }),
     ]);
 
-    // FIX: Send response immediately after DB writes — no extra await after res.json
     return res.json({
       accessToken, refreshToken, sessionId,
       timeoutMs: TIMEOUTS[user.role] || TIMEOUTS.staff,
@@ -198,13 +211,13 @@ router.post('/2fa/resend', async (req, res) => {
 
     const code = generateOtp();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    otpStore.set(user.id, { code, expiresAt });
+    await saveOtp(user.id, code, expiresAt); // FIX: save to DB
 
     try {
       await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
     } catch (emailErr) {
       console.error('Failed to resend OTP email:', emailErr);
-      otpStore.delete(user.id); // FIX: clear OTP on email failure
+      await clearOtp(user.id);
       return res.status(500).json({ error: 'Failed to resend verification code. Please try again.' });
     }
 
