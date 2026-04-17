@@ -65,7 +65,7 @@ export default function Login() {
   async function handleLogin(e) {
     e.preventDefault();
     setError("");
-    setSuccess("Connecting to server…");
+    setSuccess("Connecting to server… (first load may take ~30s)");
     setLoading(true);
     try {
       const res = await fetchWithRetry(`${API}/auth/login`, {
@@ -73,8 +73,8 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       });
-      setSuccess("");
       const data = await res.json();
+      setSuccess("");
       if (!res.ok) { setError(data.error || "Login failed"); return; }
       if (data.twoFaRequired) {
         setTempToken(data.tempToken);
@@ -100,6 +100,8 @@ export default function Login() {
     e?.preventDefault();
     const code = otp.join("");
     if (code.length < 6) { setError("Please enter the full 6-digit code."); return; }
+    // Prevent double-submit
+    if (loading) return;
     setError("");
     setSuccess("Verifying…");
     setLoading(true);
@@ -113,19 +115,21 @@ export default function Login() {
       if (!res.ok) {
         setSuccess("");
         setError(data.error || "Verification failed");
+        setLoading(false); // only reset loading on failure
         if (res.status === 401 && data.error?.includes("log in again")) {
           setTimeout(() => { setPhase("credentials"); setOtp(["","","","","",""]); setTempToken(""); }, 1800);
         }
         return;
       }
       setSuccess("Verified! Signing you in…");
-      setTimeout(() => finishLogin(data), 500);
+      // Keep loading=true until navigation completes — do NOT put setLoading(false) in finally
+      finishLogin(data);
     } catch (err) {
       setSuccess("");
       setError(err.name === "AbortError" ? "Server timeout. Please try again." : "Cannot reach the server. Try again.");
-    } finally {
       setLoading(false);
     }
+    // Note: intentionally no finally { setLoading(false) } here to prevent flicker before navigation
   }
 
   async function handleResend() {
@@ -163,7 +167,7 @@ export default function Login() {
     if (!/^\d?$/.test(val)) return;
     const next = [...otp]; next[idx] = val; setOtp(next);
     if (val && idx < 5) otpRefs.current[idx + 1]?.focus();
-    if (val && idx === 5 && [...next].join("").length === 6) setTimeout(handleOtpSubmit, 80);
+    if (val && idx === 5 && [...next].join("").length === 6) setTimeout(() => { if (!loading) handleOtpSubmit(); }, 80);
   }
 
   function handleOtpKeyDown(idx, e) {

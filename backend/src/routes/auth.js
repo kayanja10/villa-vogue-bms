@@ -6,6 +6,8 @@ const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const { authenticate } = require('../middleware/auth');
 const { sendOtpEmail } = require('../services/emailService');
+// FIX: Moved sessions require to module-level to prevent dynamic require() failures inside request handlers
+const { createSession, TIMEOUTS, WARNINGS } = require('./sessions');
 
 const prisma = new PrismaClient();
 
@@ -25,11 +27,6 @@ function generateTokens(user) {
 }
 
 // ─── POST /api/auth/login ────────────────────────────────────────────────────
-// Flow:
-//   1. Validate credentials
-//   2. If NOT admin → issue tokens immediately
-//   3. If admin → generate OTP → send to kayanjawilfred@gmail.com → return { twoFaRequired: true, tempToken }
-//      (client must call /api/auth/2fa/verify with the OTP code + tempToken)
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -71,6 +68,8 @@ router.post('/login', async (req, res) => {
         await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
       } catch (emailErr) {
         console.error('Failed to send OTP email:', emailErr);
+        // FIX: Also clear OTP store on email failure to keep state consistent
+        otpStore.delete(user.id);
         return res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
       }
 
@@ -88,7 +87,7 @@ router.post('/login', async (req, res) => {
     const { accessToken, refreshToken } = generateTokens(user);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
-    const { createSession, TIMEOUTS, WARNINGS } = require('./sessions');
+    // FIX: createSession/TIMEOUTS/WARNINGS now come from module-level require (not dynamic)
     const sessionId = createSession({ userId: user.id, username: user.username, role: user.role, ip, userAgent });
 
     await prisma.sessionAudit.create({
@@ -112,8 +111,6 @@ router.post('/login', async (req, res) => {
 });
 
 // ─── POST /api/auth/2fa/verify ───────────────────────────────────────────────
-// Called after admin login when twoFaRequired === true.
-// Body: { tempToken, code }
 router.post('/2fa/verify', async (req, res) => {
   try {
     const { tempToken, code } = req.body;
@@ -153,18 +150,21 @@ router.post('/2fa/verify', async (req, res) => {
     const { accessToken, refreshToken } = generateTokens(user);
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
-    const { createSession, TIMEOUTS, WARNINGS } = require('./sessions');
+    // FIX: Using module-level createSession/TIMEOUTS/WARNINGS (not dynamic require)
     const sessionId = createSession({ userId: user.id, username: user.username, role: user.role, ip, userAgent });
 
-    await prisma.sessionAudit.create({
-      data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent }
-    }).catch(() => {});
+    // FIX: Use Promise.allSettled so a DB write failure never blocks the login response
+    await Promise.allSettled([
+      prisma.sessionAudit.create({
+        data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent }
+      }),
+      prisma.activityLog.create({
+        data: { userId: user.id, username: user.username, action: 'login_2fa', entityType: 'auth', details: JSON.stringify({ role: user.role, ip }) }
+      }),
+    ]);
 
-    await prisma.activityLog.create({
-      data: { userId: user.id, username: user.username, action: 'login_2fa', entityType: 'auth', details: JSON.stringify({ role: user.role, ip }) }
-    }).catch(() => {});
-
-    res.json({
+    // FIX: Send response immediately after DB writes — no extra await after res.json
+    return res.json({
       accessToken, refreshToken, sessionId,
       timeoutMs: TIMEOUTS[user.role] || TIMEOUTS.staff,
       warningMs: WARNINGS[user.role] || WARNINGS.staff,
@@ -177,8 +177,6 @@ router.post('/2fa/verify', async (req, res) => {
 });
 
 // ─── POST /api/auth/2fa/resend ────────────────────────────────────────────────
-// Resend OTP for an active 2FA session.
-// Body: { tempToken }
 router.post('/2fa/resend', async (req, res) => {
   try {
     const { tempToken } = req.body;
@@ -206,6 +204,7 @@ router.post('/2fa/resend', async (req, res) => {
       await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
     } catch (emailErr) {
       console.error('Failed to resend OTP email:', emailErr);
+      otpStore.delete(user.id); // FIX: clear OTP on email failure
       return res.status(500).json({ error: 'Failed to resend verification code. Please try again.' });
     }
 
