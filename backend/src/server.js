@@ -1,24 +1,28 @@
 require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const helmet = require('helmet');
+const express     = require('express');
+const http        = require('http');
+const { Server }  = require('socket.io');
+const cors        = require('cors');
+const helmet      = require('helmet');
 const compression = require('compression');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
+const morgan      = require('morgan');
+const rateLimit   = require('express-rate-limit');
 
-const app = express();
+const app    = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', methods: ['GET', 'POST'], credentials: true },
+const io     = new Server(server, {
+  cors: {
+    origin:      process.env.FRONTEND_URL || 'http://localhost:3000',
+    methods:     ['GET', 'POST'],
+    credentials: true,
+  },
 });
 app.set('io', io);
 global.io = io;
 
-app.use(helmet({ contentSecurityPolicy: false }));
-app.use(compression());
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+// FIX: use a function-based origin so regex patterns are tested correctly
+// against the full Origin header string (e.g. "https://xyz.vercel.app")
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'http://localhost:3000',
   'http://localhost:3000',
@@ -30,32 +34,41 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, server-to-server)
+    // Allow server-to-server / Postman / mobile (no Origin header)
     if (!origin) return callback(null, true);
-    const allowed = ALLOWED_ORIGINS.some(o =>
+    const ok = ALLOWED_ORIGINS.some((o) =>
       typeof o === 'string' ? o === origin : o.test(origin)
     );
-    if (allowed) return callback(null, true);
-    callback(new Error(`CORS: origin ${origin} not allowed`));
+    if (ok) return callback(null, true);
+    console.warn('CORS blocked origin:', origin);
+    callback(new Error(`CORS: origin not allowed — ${origin}`));
   },
   credentials: true,
 }));
+
+// ─── Middleware ───────────────────────────────────────────────────────────────
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression());
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use('/api/', rateLimit({ windowMs: 15*60*1000, max: 500 }));
 
-// Auth
-app.use('/api/auth', rateLimit({ windowMs: 15*60*1000, max: 20 }), require('./routes/auth'));
+// Global rate limit
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
-// Core routes
-app.use('/api/users', require('./routes/users'));
-app.use('/api/products', require('./routes/products'));
-app.use('/api/customers', require('./routes/customers'));
-app.use('/api/orders', require('./routes/orders'));
-app.use('/api/payments', require('./routes/payments'));
-app.use('/api/analytics', require('./routes/analytics'));
-app.use('/api/ai', require('./routes/ai'));
-app.use('/api/cashbook', require('./routes/cashbook'));
+// ─── Routes ───────────────────────────────────────────────────────────────────
+// Auth — tighter rate limit
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }), require('./routes/auth'));
+
+// Core
+app.use('/api/users',         require('./routes/users'));
+app.use('/api/products',      require('./routes/products'));
+app.use('/api/customers',     require('./routes/customers'));
+app.use('/api/orders',        require('./routes/orders'));
+app.use('/api/payments',      require('./routes/payments'));
+app.use('/api/analytics',     require('./routes/analytics'));
+app.use('/api/ai',            require('./routes/ai'));
+app.use('/api/cashbook',      require('./routes/cashbook'));
 app.use('/api/notifications', require('./routes/notifications'));
 
 // Sessions
@@ -70,41 +83,47 @@ const {
   cashFloatRouter, purchaseOrdersRouter, uploadsRouter,
 } = require('./routes/allRoutes');
 
-app.use('/api/categories', categoriesRouter);
-app.use('/api/expenses', expensesRouter);
-app.use('/api/suppliers', suppliersRouter);
-app.use('/api/settings', settingsRouter);
-app.use('/api/activity', activityRouter);
-app.use('/api/inventory', inventoryRouter);
-app.use('/api/reports', reportsRouter);
-app.use('/api/discounts', discountsRouter);
-app.use('/api/quotes', quotesRouter);
-app.use('/api/staff', staffRouter);
-app.use('/api/layaways', layawaysRouter);
-app.use('/api/debts', debtsRouter);
-app.use('/api/feedback', feedbackRouter);
-app.use('/api/cash-float', cashFloatRouter);
+app.use('/api/categories',      categoriesRouter);
+app.use('/api/expenses',        expensesRouter);
+app.use('/api/suppliers',       suppliersRouter);
+app.use('/api/settings',        settingsRouter);
+app.use('/api/activity',        activityRouter);
+app.use('/api/inventory',       inventoryRouter);
+app.use('/api/reports',         reportsRouter);
+app.use('/api/discounts',       discountsRouter);
+app.use('/api/quotes',          quotesRouter);
+app.use('/api/staff',           staffRouter);
+app.use('/api/layaways',        layawaysRouter);
+app.use('/api/debts',           debtsRouter);
+app.use('/api/feedback',        feedbackRouter);
+app.use('/api/cash-float',      cashFloatRouter);
 app.use('/api/purchase-orders', purchaseOrdersRouter);
-app.use('/api/uploads', uploadsRouter);
+app.use('/api/uploads',         uploadsRouter);
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '2.2.0', timestamp: new Date().toISOString() }));
+// Health check
+app.get('/api/health', (req, res) =>
+  res.json({ status: 'ok', version: '2.2.0', timestamp: new Date().toISOString() })
+);
 
-// Socket.io - join session room for targeted events
+// ─── Socket.io ────────────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
-  socket.on('join:session', (sessionId) => {
-    socket.join(`session:${sessionId}`);
-  });
-  socket.on('join:room', (room) => {
-    socket.join(room);
-  });
-  socket.on('disconnect', () => {});
+  socket.on('join:session', (sessionId) => socket.join(`session:${sessionId}`));
+  socket.on('join:room',    (room)      => socket.join(room));
+  socket.on('disconnect',   () => {});
 });
 
+// ─── Error handler ────────────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
-  console.error('Error:', err.message);
-  res.status(err.status || 500).json({ error: process.env.NODE_ENV === 'production' ? 'Server error' : err.message });
+  console.error('Server error:', err.message);
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production' ? 'Server error' : err.message,
+  });
 });
 
+// ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`🚀 Villa Vogue BMS v2.2 → http://localhost:${PORT}`));
+server.listen(PORT, () =>
+  console.log(`🚀 Villa Vogue BMS v2.2 → http://localhost:${PORT}`)
+);
+
 module.exports = { app, io };
