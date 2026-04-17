@@ -1,16 +1,21 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import { useStore } from "../store/useStore";
 
 const API = import.meta.env.VITE_API_URL || "https://villa-vogue-bms.onrender.com/api";
 
-// ── Persists session to localStorage ──────────────────────────────────────────
+// ── Persists session to localStorage (keys must match api.js interceptor) ─────
 function saveSession(data) {
-  localStorage.setItem("accessToken", data.accessToken);
-  localStorage.setItem("refreshToken", data.refreshToken);
-  localStorage.setItem("sessionId", data.sessionId);
-  localStorage.setItem("user", JSON.stringify(data.user));
+  localStorage.setItem("vv_token", data.accessToken);
+  localStorage.setItem("vv_refresh", data.refreshToken);
+  localStorage.setItem("vv_session", data.sessionId);
+  localStorage.setItem("vv_user", JSON.stringify(data.user));
 }
 
-export default function Login({ onLogin }) {
+export default function Login() {
+  const navigate = useNavigate();
+  const setUser = useStore((s) => s.setUser);
+
   // ── PHASE: "credentials" | "otp" ──────────────────────────────────────────
   const [phase, setPhase] = useState("credentials");
 
@@ -44,6 +49,13 @@ export default function Login({ onLogin }) {
     }
   }, [phase]);
 
+  // ── Finish login: save tokens + set store user + navigate ─────────────────
+  function finishLogin(data) {
+    saveSession(data);
+    setUser(data.user);         // sets user in Zustand → Guard becomes satisfied
+    navigate("/", { replace: true });
+  }
+
   // ── Step 1: Submit credentials ────────────────────────────────────────────
   async function handleLogin(e) {
     e.preventDefault();
@@ -70,8 +82,7 @@ export default function Login({ onLogin }) {
         setSuccess("A 6-digit code has been sent to the admin email.");
       } else {
         // Non-admin → session granted immediately
-        saveSession(data);
-        onLogin?.(data);
+        finishLogin(data);
       }
     } catch {
       setError("Network error. Please try again.");
@@ -111,9 +122,8 @@ export default function Login({ onLogin }) {
         return;
       }
 
-      saveSession(data);
       setSuccess("Verified! Signing you in…");
-      setTimeout(() => onLogin?.(data), 600);
+      setTimeout(() => finishLogin(data), 600);
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -491,6 +501,28 @@ export default function Login({ onLogin }) {
           letter-spacing: 1px;
         }
 
+        /* Customer portal link */
+        .vv-portal-link {
+          display: block;
+          text-align: center;
+          margin-top: 20px;
+          font-size: 10px;
+          letter-spacing: 2px;
+          text-transform: uppercase;
+          color: #555;
+          text-decoration: none;
+          transition: color 0.2s;
+          cursor: pointer;
+          background: none;
+          border: none;
+          width: 100%;
+          font-family: 'Montserrat', sans-serif;
+        }
+        .vv-portal-link:hover { color: #C9A96E; }
+        .vv-portal-link span {
+          color: #C9A96E;
+        }
+
         /* Phase transition */
         .phase-enter {
           animation: phaseIn 0.35s cubic-bezier(0.22,1,0.36,1) both;
@@ -570,6 +602,14 @@ export default function Login({ onLogin }) {
                   {loading ? "Signing In…" : "Sign In"}
                 </button>
               </form>
+
+              {/* ── Customer Portal shortcut ── */}
+              <button
+                className="vv-portal-link"
+                onClick={() => navigate("/store")}
+              >
+                Customer? Visit the <span>Online Store →</span>
+              </button>
             </div>
           )}
 
@@ -609,7 +649,7 @@ export default function Login({ onLogin }) {
                       className={`otp-box${digit ? " otp-box--filled" : ""}`}
                       type="text"
                       inputMode="numeric"
-                      maxLength={6}           /* allow paste of full code */
+                      maxLength={6}
                       value={digit}
                       onChange={(e) => { clearAlerts(); handleOtpChange(idx, e.target.value); }}
                       onKeyDown={(e) => handleOtpKeyDown(idx, e)}
