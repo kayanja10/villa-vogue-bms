@@ -21,8 +21,6 @@ app.set('io', io);
 global.io = io;
 
 // ─── CORS ─────────────────────────────────────────────────────────────────────
-// FIX: use a function-based origin so regex patterns are tested correctly
-// against the full Origin header string (e.g. "https://xyz.vercel.app")
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'http://localhost:3000',
   'http://localhost:3000',
@@ -34,7 +32,6 @@ const ALLOWED_ORIGINS = [
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow server-to-server / Postman / mobile (no Origin header)
     if (!origin) return callback(null, true);
     const ok = ALLOWED_ORIGINS.some((o) =>
       typeof o === 'string' ? o === origin : o.test(origin)
@@ -57,8 +54,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
-// Auth — tighter rate limit
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 20 }), require('./routes/auth'));
+// FIX: raised auth rate limit from 20 → 50 to prevent cold-start lockouts on Render
+// Admin login = 1 request (login) + 1 request (2fa/verify) = 2 per login attempt
+// 50 allows ~25 full admin login attempts per 15 min window, which is safe
+app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 50 }), require('./routes/auth'));
 
 // Core
 app.use('/api/users',         require('./routes/users'));
@@ -102,7 +101,7 @@ app.use('/api/uploads',         uploadsRouter);
 
 // Health check
 app.get('/api/health', (req, res) =>
-  res.json({ status: 'ok', version: '2.2.0', timestamp: new Date().toISOString() })
+  res.json({ status: 'ok', version: '2.2.1', timestamp: new Date().toISOString() })
 );
 
 // ─── Socket.io ────────────────────────────────────────────────────────────────
@@ -123,7 +122,7 @@ app.use((err, req, res, next) => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () =>
-  console.log(`🚀 Villa Vogue BMS v2.2 → http://localhost:${PORT}`)
+  console.log(`🚀 Villa Vogue BMS v2.2.1 → http://localhost:${PORT}`)
 );
 
 module.exports = { app, io };

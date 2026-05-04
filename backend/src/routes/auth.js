@@ -8,7 +8,6 @@ const { authenticate } = require('../middleware/auth');
 const { sendOtpEmail } = require('../services/emailService');
 
 // FIX: require sessions at module level — NEVER inside a request handler
-// (dynamic require inside handlers causes failures on Render after cold-starts)
 const { createSession, TIMEOUTS, WARNINGS } = require('./sessions');
 
 const prisma = new PrismaClient();
@@ -27,11 +26,8 @@ function generateTokens(user) {
 }
 
 // ─── OTP stored in the OtpCode table (survives Render restarts) ───────────────
-// Schema: OtpCode { id, userId, code, purpose, expiresAt, used, createdAt }
-// This replaces the old in-memory Map that was wiped on every cold start.
 
 async function saveOtp(userId, code, expiresAt) {
-  // Delete any existing unused OTP for this user first (keep table clean)
   await prisma.otpCode.deleteMany({ where: { userId, purpose: 'login', used: false } });
   await prisma.otpCode.create({
     data: { userId, code, purpose: 'login', expiresAt, used: false },
@@ -39,7 +35,6 @@ async function saveOtp(userId, code, expiresAt) {
 }
 
 async function getOtp(userId) {
-  // Get the most recent unused OTP for this user
   return prisma.otpCode.findFirst({
     where: { userId, purpose: 'login', used: false },
     orderBy: { createdAt: 'desc' },
@@ -93,15 +88,15 @@ router.post('/login', async (req, res) => {
     });
 
     // ── Admin → 2FA via email OTP ────────────────────────────────────────────
-    if (user.role === 'admin') {
+    // FIX: case-insensitive role check — handles 'admin', 'ADMIN', 'Admin'
+    if (user.role?.toLowerCase() === 'admin') {
       const code      = generateOtp();
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
 
-      // FIX: save to DB — survives Render cold starts / restarts
       await saveOtp(user.id, code, expiresAt);
 
       try {
-        await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
+        await sendOtpEmail(user.email, code, user.username);
       } catch (emailErr) {
         console.error('OTP email failed:', emailErr);
         await clearOtps(user.id);
@@ -123,7 +118,6 @@ router.post('/login', async (req, res) => {
     const userAgent = req.headers['user-agent'] || 'unknown';
     const sessionId = createSession({ userId: user.id, username: user.username, role: user.role, ip, userAgent });
 
-    // FIX: Promise.allSettled so a DB write failure never blocks the login response
     await Promise.allSettled([
       prisma.sessionAudit.create({
         data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent },
@@ -152,7 +146,6 @@ router.post('/2fa/verify', async (req, res) => {
     if (!tempToken || !code)
       return res.status(400).json({ error: 'tempToken and code required' });
 
-    // Verify the short-lived temp token
     let decoded;
     try {
       decoded = jwt.verify(tempToken, process.env.JWT_SECRET);
@@ -166,7 +159,6 @@ router.post('/2fa/verify', async (req, res) => {
     if (!user || !user.isActive)
       return res.status(401).json({ error: 'Invalid 2FA session.' });
 
-    // FIX: read OTP from DB — not in-memory map
     const otpEntry = await getOtp(user.id);
     if (!otpEntry)
       return res.status(401).json({ error: 'No verification code found. Please log in again.' });
@@ -187,7 +179,6 @@ router.post('/2fa/verify', async (req, res) => {
     const userAgent = req.headers['user-agent'] || 'unknown';
     const sessionId = createSession({ userId: user.id, username: user.username, role: user.role, ip, userAgent });
 
-    // FIX: Promise.allSettled — DB audit failures must never block the response
     await Promise.allSettled([
       prisma.sessionAudit.create({
         data: { sessionId, userId: user.id, username: user.username, role: user.role, loginTime: new Date(), reason: 'login', ip, userAgent },
@@ -225,16 +216,17 @@ router.post('/2fa/resend', async (req, res) => {
       return res.status(401).json({ error: 'Invalid token.' });
 
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
-    if (!user || !user.isActive || user.role !== 'admin')
+    // FIX: case-insensitive role check
+    if (!user || !user.isActive || user.role?.toLowerCase() !== 'admin')
       return res.status(401).json({ error: 'Invalid session.' });
 
     const code      = generateOtp();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await saveOtp(user.id, code, expiresAt); // FIX: DB-backed
+    await saveOtp(user.id, code, expiresAt);
 
     try {
-      await sendOtpEmail('kayanjawilfred@gmail.com', code, user.username);
+      await sendOtpEmail(user.email, code, user.username);
     } catch (emailErr) {
       console.error('OTP resend email failed:', emailErr);
       await clearOtps(user.id);
