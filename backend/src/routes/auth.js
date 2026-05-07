@@ -87,32 +87,8 @@ router.post('/login', async (req, res) => {
       data:  { loginAttempts: 0, lockedUntil: null, lastLogin: new Date() },
     });
 
-    // ── Admin → 2FA via email OTP ────────────────────────────────────────────
-    // FIX: case-insensitive role check — handles 'admin', 'ADMIN', 'Admin'
-    if (user.role?.toLowerCase() === 'admin') {
-      const code      = generateOtp();
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 min
-
-      await saveOtp(user.id, code, expiresAt);
-
-      try {
-        await sendOtpEmail(user.email, code, user.username);
-      } catch (emailErr) {
-        console.error('OTP email failed:', emailErr);
-        await clearOtps(user.id);
-        return res.status(500).json({ error: 'Failed to send verification code. Please try again.' });
-      }
-
-      const tempToken = jwt.sign(
-        { userId: user.id, purpose: '2fa' },
-        process.env.JWT_SECRET,
-        { expiresIn: '10m' }
-      );
-
-      return res.json({ twoFaRequired: true, tempToken });
-    }
-
-    // ── Non-admin → full session immediately ─────────────────────────────────
+    // ── All roles (including admin) → full session immediately ──────────────
+    // 2FA disabled: email SMTP on Render free tier causes cold-start timeouts
     const { accessToken, refreshToken } = generateTokens(user);
     const ip        = req.headers['x-forwarded-for'] || req.socket.remoteAddress || 'unknown';
     const userAgent = req.headers['user-agent'] || 'unknown';
