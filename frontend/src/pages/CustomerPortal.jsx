@@ -24,7 +24,7 @@ import {
   User, LogOut, Package, X, ArrowLeft, Plus, Minus,
   Trash2, ChevronLeft, Eye, Check, Loader,
 } from 'lucide-react';
-import { products as productApi, customers } from '../../lib/api';
+import { products as productApi, customers } from '../lib/api';
 
 /* ══════════════════════════════════════════════════════════════════
    GLOBAL STYLES
