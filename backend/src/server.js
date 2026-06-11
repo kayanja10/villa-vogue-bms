@@ -10,24 +10,53 @@ const rateLimit   = require('express-rate-limit');
 
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, {
+
+// ─── ALLOWED ORIGINS ──────────────────────────────────────────────────────────
+// Covers localhost dev, all Vercel deployments (incl. dots/uppercase in subdomain),
+// Netlify, and Render. filter(Boolean) drops undefined FRONTEND_URL safely.
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:3001',
+  'http://localhost:5173',
+  'https://villa-vogue-bms-pjmp.vercel.app',
+  /^https:\/\/[\w.-]+\.vercel\.app$/,
+  /^https:\/\/[\w.-]+\.netlify\.app$/,
+  /^https:\/\/[\w.-]+\.onrender\.com$/,
+].filter(Boolean);
+
+function isAllowedOrigin(origin) {
+  if (!origin) return true; // server-to-server / curl
+  return ALLOWED_ORIGINS.some((o) =>
+    typeof o === 'string' ? o === origin : o.test(origin)
+  );
+}
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (isAllowedOrigin(origin)) return callback(null, true);
+    console.warn('[CORS] Blocked:', origin);
+    callback(new Error(`CORS: origin not allowed — ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+// ─── CRITICAL: handle OPTIONS preflight BEFORE everything else ────────────────
+// Without this, browsers block cross-origin POST/PUT/DELETE before they even fire.
+app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
+
+// ─── Socket.io ────────────────────────────────────────────────────────────────
+const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      const socketOrigins = [
-        process.env.FRONTEND_URL,
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:5173',
-        'https://villa-vogue-bms-pjmp.vercel.app',
-        /^https:\/\/[\w.-]+\.vercel\.app$/,
-        /^https:\/\/[\w.-]+\.netlify\.app$/,
-        /^https:\/\/[\w.-]+\.onrender\.com$/,
-      ].filter(Boolean);
-      const ok = socketOrigins.some((o) =>
-        typeof o === 'string' ? o === origin : o.test(origin)
-      );
-      callback(ok ? null : new Error('Socket CORS blocked'), ok);
+      if (isAllowedOrigin(origin)) return callback(null, true);
+      callback(new Error('Socket CORS blocked'));
     },
     methods:     ['GET', 'POST'],
     credentials: true,
@@ -36,34 +65,6 @@ const io     = new Server(server, {
 app.set('io', io);
 global.io = io;
 
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_URL,
-  'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:5173',
-  'https://villa-vogue-bms-pjmp.vercel.app',
-  // Broad regex: matches ALL vercel/netlify/onrender subdomains incl dots, uppercase, numbers
-  /^https:\/\/[\w.-]+\.vercel\.app$/,
-  /^https:\/\/[\w.-]+\.netlify\.app$/,
-  /^https:\/\/[\w.-]+\.onrender\.com$/,
-].filter(Boolean);
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    const ok = ALLOWED_ORIGINS.some((o) =>
-      typeof o === 'string' ? o === origin : o.test(origin)
-    );
-    if (ok) return callback(null, true);
-    console.warn('CORS blocked origin:', origin);
-    callback(new Error(`CORS: origin not allowed — ${origin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
@@ -71,16 +72,20 @@ app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Global rate limit
-app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
+// ─── Diagnostics (safe to leave in — low overhead) ───────────────────────────
+app.use((req, _res, next) => {
+  if (req.method === 'OPTIONS' || req.path.startsWith('/api/auth')) {
+    console.log(`[${req.method}] ${req.path} | origin: ${req.headers.origin || 'none'}`);
+  }
+  next();
+});
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-// FIX: raised auth rate limit from 20 → 50 to prevent cold-start lockouts on Render
-// Admin login = 1 request (login) + 1 request (2fa/verify) = 2 per login attempt
-// 50 allows ~25 full admin login attempts per 15 min window, which is safe
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+app.use('/api/', rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
+// Auth: 50 attempts per 15 min — handles 2FA (login + verify = 2 requests per attempt)
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, max: 50 }), require('./routes/auth'));
 
-// Core
+// ─── Core routes ──────────────────────────────────────────────────────────────
 app.use('/api/users',         require('./routes/users'));
 app.use('/api/products',      require('./routes/products'));
 app.use('/api/customers',     require('./routes/customers'));
@@ -120,21 +125,21 @@ app.use('/api/cash-float',      cashFloatRouter);
 app.use('/api/purchase-orders', purchaseOrdersRouter);
 app.use('/api/uploads',         uploadsRouter);
 
-// Health check
-app.get('/api/health', (req, res) =>
+// ─── Health check ─────────────────────────────────────────────────────────────
+app.get('/api/health', (_req, res) =>
   res.json({ status: 'ok', version: '2.2.1', timestamp: new Date().toISOString() })
 );
 
-// ─── Socket.io ────────────────────────────────────────────────────────────────
+// ─── Socket.io events ─────────────────────────────────────────────────────────
 io.on('connection', (socket) => {
   socket.on('join:session', (sessionId) => socket.join(`session:${sessionId}`));
   socket.on('join:room',    (room)      => socket.join(room));
   socket.on('disconnect',   () => {});
 });
 
-// ─── Error handler ────────────────────────────────────────────────────────────
-app.use((err, req, res, next) => {
-  console.error('Server error:', err.message);
+// ─── Global error handler ─────────────────────────────────────────────────────
+app.use((err, req, res, _next) => {
+  console.error('[Error]', err.message);
   res.status(err.status || 500).json({
     error: process.env.NODE_ENV === 'production' ? 'Server error' : err.message,
   });
