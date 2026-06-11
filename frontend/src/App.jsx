@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import { useStore } from './store/useStore';
@@ -21,13 +21,85 @@ import {
   UsersPage, SettingsPage,
 } from './pages/index.jsx';
 import CustomerPortal from './pages/CustomerPortal';
+import { customers, products as productsApi } from './lib/api';
 import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000, refetchOnWindowFocus: false } },
 });
 
-// Session manager runs inside Router so it can navigate
+// ─── Customer Portal Wrapper ─────────────────────────────────────────────────
+// Fetches products/orders and wires up login/logout so CustomerPortal works
+// with the real API instead of navigating to /staff/login or /login.
+function CustomerPortalWrapper() {
+  const navigate = useNavigate();
+  const [portalUser,    setPortalUser]    = useState(() => {
+    try { return JSON.parse(localStorage.getItem('vv_portal_user') || 'null'); } catch { return null; }
+  });
+  const [portalProducts, setPortalProducts] = useState([]);
+  const [portalOrders,   setPortalOrders]   = useState([]);
+  const [loading,        setLoading]        = useState(true);
+
+  // Load public products on mount
+  useEffect(() => {
+    productsApi.listPublic({ limit: 50 })
+      .then(res => setPortalProducts(res.data?.products || res.data || []))
+      .catch(() => setPortalProducts([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Load customer orders when logged in
+  useEffect(() => {
+    if (!portalUser) return;
+    const token = localStorage.getItem('vv_portal_token');
+    if (!token) return;
+    // fetch orders for logged-in customer — silent fail is fine
+    import('./lib/api').then(({ default: api }) => {
+      api.get(`/customers/${portalUser.id}/orders`)
+        .then(res => setPortalOrders(res.data?.orders || res.data || []))
+        .catch(() => {});
+    });
+  }, [portalUser]);
+
+  const handleLogin = useCallback(async (creds) => {
+    if (creds.isStaff) {
+      // Staff login — redirect to the BMS login page
+      navigate('/login');
+      return;
+    }
+    // Customer portal login
+    const res = await customers.portalLogin({ email: creds.email, password: creds.password });
+    const data = res.data;
+    localStorage.setItem('vv_portal_token', data.accessToken || data.token || '');
+    localStorage.setItem('vv_portal_user',  JSON.stringify(data.customer || data.user));
+    setPortalUser(data.customer || data.user);
+  }, [navigate]);
+
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem('vv_portal_token');
+    localStorage.removeItem('vv_portal_user');
+    setPortalUser(null);
+    setPortalOrders([]);
+  }, []);
+
+  const handleStaffLogin = useCallback(() => {
+    navigate('/login');
+  }, [navigate]);
+
+  return (
+    <CustomerPortal
+      user={portalUser}
+      products={portalProducts}
+      orders={portalOrders}
+      loading={loading}
+      onLogin={handleLogin}
+      onLogout={handleLogout}
+      onStaffLogin={handleStaffLogin}
+    />
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 function SessionInit() {
   useSocket();
   useSessionManager();
@@ -58,7 +130,7 @@ export default function App() {
         }} />
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/store/*" element={<CustomerPortal />} />
+          <Route path="/store/*" element={<CustomerPortalWrapper />} />
           <Route path="/" element={<Guard><Layout /></Guard>}>
             <Route index element={<Dashboard />} />
             <Route path="pos" element={<POS />} />
