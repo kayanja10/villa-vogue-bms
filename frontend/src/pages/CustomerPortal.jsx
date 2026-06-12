@@ -2,7 +2,30 @@
 // Dark/Light Mode | Staff Login | All Features Preserved
 
 import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
-import { motion, AnimatePresence, useScroll, useTransform, useInView } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
+
+// Native IntersectionObserver — works with ANY framer-motion version
+function useInView(ref, { once = true, margin = "0px" } = {}) {
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          if (once) obs.disconnect();
+        } else if (!once) {
+          setInView(false);
+        }
+      },
+      { rootMargin: margin }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, once, margin]);
+  return inView;
+}
 
 const ThemeContext = createContext();
 const useTheme = () => useContext(ThemeContext);
@@ -1139,9 +1162,20 @@ const CustomerPortal = (props) => {
   const [theme,setTheme]=useState(()=>{
     try{
       const s=localStorage.getItem("vv_theme");
-      if(s)return s;
-      return window.matchMedia?.("(prefers-color-scheme: dark)").matches?"dark":"light";
-    }catch{return "dark";}
+      if(s){
+        // Apply immediately — before first paint — so CSS vars are available instantly
+        document.body.classList.remove("vv-dark","vv-light");
+        document.body.classList.add(`vv-${s}`);
+        return s;
+      }
+      const preferred = window.matchMedia?.("(prefers-color-scheme: dark)").matches?"dark":"light";
+      document.body.classList.remove("vv-dark","vv-light");
+      document.body.classList.add(`vv-${preferred}`);
+      return preferred;
+    }catch{
+      document.body.classList.add("vv-dark");
+      return "dark";
+    }
   });
   useEffect(()=>{
     document.body.classList.remove("vv-dark","vv-light");

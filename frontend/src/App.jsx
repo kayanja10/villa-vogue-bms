@@ -29,62 +29,83 @@ const queryClient = new QueryClient({
 });
 
 // ─── Customer Portal Wrapper ─────────────────────────────────────────────────
-// Fetches products/orders and wires up login/logout so CustomerPortal works
-// with the real API instead of navigating to /staff/login or /login.
+const BASE = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
+
 function CustomerPortalWrapper() {
   const navigate = useNavigate();
-  const [portalUser,    setPortalUser]    = useState(() => {
+
+  const [portalUser,     setPortalUser]     = useState(() => {
     try { return JSON.parse(localStorage.getItem('vv_portal_user') || 'null'); } catch { return null; }
   });
   const [portalProducts, setPortalProducts] = useState([]);
   const [portalOrders,   setPortalOrders]   = useState([]);
   const [loading,        setLoading]        = useState(true);
 
-  // Load public products on mount
+  // ── Fetch products on mount ─────────────────────────────────────────────────
+  // Tries /products/public first, then /products, then raw fetch as last resort
   useEffect(() => {
-    productsApi.listPublic({ limit: 50 })
-      .then(res => setPortalProducts(res.data?.products || res.data || []))
-      .catch(() => setPortalProducts([]))
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const fetchProducts = async () => {
+      setLoading(true);
+      try {
+        // Attempt 1: public endpoint
+        let res = await productsApi.listPublic({ limit: 100 });
+        let items = res.data?.products || res.data?.data || res.data || [];
+        // Attempt 2: fall back to general list if empty
+        if (!items.length) {
+          res = await productsApi.list({ limit: 100 });
+          items = res.data?.products || res.data?.data || res.data || [];
+        }
+        if (!cancelled) setPortalProducts(Array.isArray(items) ? items : []);
+      } catch {
+        // Attempt 3: raw fetch — bypasses axios interceptors
+        try {
+          const r = await fetch(`${BASE}/products?limit=100`);
+          const d = await r.json();
+          if (!cancelled) setPortalProducts(d?.products || d?.data || (Array.isArray(d) ? d : []));
+        } catch {
+          if (!cancelled) setPortalProducts([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    fetchProducts();
+    return () => { cancelled = true; };
   }, []);
 
-  // Load customer orders when logged in
+  // ── Fetch orders when customer is logged in ─────────────────────────────────
   useEffect(() => {
-    if (!portalUser) return;
+    if (!portalUser?.id) return;
     const token = localStorage.getItem('vv_portal_token');
     if (!token) return;
-    // fetch orders for logged-in customer — silent fail is fine
-    import('./lib/api').then(({ default: api }) => {
-      api.get(`/customers/${portalUser.id}/orders`)
-        .then(res => setPortalOrders(res.data?.orders || res.data || []))
-        .catch(() => {});
-    });
+    fetch(`${BASE}/orders?customerId=${portalUser.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(r => r.json())
+      .then(d => setPortalOrders(d?.orders || d?.data || (Array.isArray(d) ? d : [])))
+      .catch(() => setPortalOrders([]));
   }, [portalUser]);
 
+  // ── Customer login ──────────────────────────────────────────────────────────
   const handleLogin = useCallback(async (creds) => {
-    if (creds.isStaff) {
-      // Staff login — redirect to the BMS login page
-      navigate('/login');
-      return;
-    }
-    // Customer portal login
-    const res = await customers.portalLogin({ email: creds.email, password: creds.password });
+    if (creds.isStaff) { navigate('/login'); return; }
+    const res  = await customers.portalLogin({ email: creds.email, password: creds.password });
     const data = res.data;
-    localStorage.setItem('vv_portal_token', data.accessToken || data.token || '');
-    localStorage.setItem('vv_portal_user',  JSON.stringify(data.customer || data.user));
-    setPortalUser(data.customer || data.user);
+    const token    = data.accessToken || data.token || '';
+    const userData = data.customer    || data.user  || data;
+    localStorage.setItem('vv_portal_token', token);
+    localStorage.setItem('vv_portal_user',  JSON.stringify(userData));
+    setPortalUser(userData);
   }, [navigate]);
 
+  // ── Customer logout ─────────────────────────────────────────────────────────
   const handleLogout = useCallback(() => {
     localStorage.removeItem('vv_portal_token');
     localStorage.removeItem('vv_portal_user');
     setPortalUser(null);
     setPortalOrders([]);
   }, []);
-
-  const handleStaffLogin = useCallback(() => {
-    navigate('/login');
-  }, [navigate]);
 
   return (
     <CustomerPortal
@@ -94,7 +115,7 @@ function CustomerPortalWrapper() {
       loading={loading}
       onLogin={handleLogin}
       onLogout={handleLogout}
-      onStaffLogin={handleStaffLogin}
+      onStaffLogin={() => navigate('/login')}
     />
   );
 }
