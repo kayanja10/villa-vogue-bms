@@ -28,9 +28,12 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30000, refetchOnWindowFocus: false } },
 });
 
-// ─── Customer Portal Wrapper ─────────────────────────────────────────────────
+// ─── Base URL — always use Render backend, never localhost ───────────────────
+// VITE_API_URL env var can override (set in Vercel dashboard)
+// Fallback is hardcoded Render URL so it works even without the env var
 const BASE = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
 
+// ─── Customer Portal Wrapper ─────────────────────────────────────────────────
 function CustomerPortalWrapper() {
   const navigate = useNavigate();
 
@@ -42,25 +45,26 @@ function CustomerPortalWrapper() {
   const [loading,        setLoading]        = useState(true);
 
   // ── Fetch products on mount ─────────────────────────────────────────────────
-  // Tries /products/public first, then /products, then raw fetch as last resort
   useEffect(() => {
     let cancelled = false;
     const fetchProducts = async () => {
       setLoading(true);
       try {
-        // Attempt 1: public endpoint
+        // Attempt 1: axios via api.js (uses correct BASE URL with Render fallback)
         let res = await productsApi.listPublic({ limit: 100 });
         let items = res.data?.products || res.data?.data || res.data || [];
-        // Attempt 2: fall back to general list if empty
+
+        // Attempt 2: fall back to general authenticated list if public is empty
         if (!items.length) {
           res = await productsApi.list({ limit: 100 });
           items = res.data?.products || res.data?.data || res.data || [];
         }
         if (!cancelled) setPortalProducts(Array.isArray(items) ? items : []);
       } catch {
-        // Attempt 3: raw fetch — bypasses axios interceptors
+        // Attempt 3: raw fetch — MUST use /products/public (no auth required)
+        // BUG FIX: was incorrectly hitting /products which requires JWT auth
         try {
-          const r = await fetch(`${BASE}/products?limit=100`);
+          const r = await fetch(`${BASE}/products/public?limit=100`);
           const d = await r.json();
           if (!cancelled) setPortalProducts(d?.products || d?.data || (Array.isArray(d) ? d : []));
         } catch {
