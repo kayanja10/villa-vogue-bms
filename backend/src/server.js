@@ -5,32 +5,6 @@ const helmet     = require('helmet');
 const http       = require('http');
 const { Server } = require('socket.io');
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
-const authRoutes     = require('./routes/auth');
-const productRoutes  = require('./routes/products');
-const customerRoutes = require('./routes/customers');
-const orderRoutes    = require('./routes/orders');
-const userRoutes     = require('./routes/users');
-const sessionRoutes  = require('./routes/sessions');
-const {
-  categoriesRouter,
-  expensesRouter,
-  suppliersRouter,
-  settingsRouter,
-  activityRouter,
-  inventoryRouter,
-  reportsRouter,
-  discountsRouter,
-  quotesRouter,
-  staffRouter,
-  layawaysRouter,
-  debtsRouter,
-  feedbackRouter,
-  cashFloatRouter,
-  purchaseOrdersRouter,
-  uploadsRouter,
-} = require('./routes/allRoutes');
-
 const app    = express();
 const server = http.createServer(app);
 
@@ -58,10 +32,7 @@ app.use(cors({
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 const io = new Server(server, {
-  cors: {
-    origin: ALLOWED_ORIGINS,
-    credentials: true,
-  },
+  cors: { origin: ALLOWED_ORIGINS, credentials: true },
 });
 global.io = io;
 io.on('connection', (socket) => {
@@ -78,13 +49,44 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.get('/health',     (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 app.get('/api/health', (req, res) => res.json({ status: 'ok', ts: new Date().toISOString() }));
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth',            authRoutes);
-app.use('/api/products',        productRoutes);
-app.use('/api/customers',       customerRoutes);
-app.use('/api/orders',          orderRoutes);
-app.use('/api/users',           userRoutes);
-app.use('/api/sessions',        sessionRoutes);
+// ─── Route files ──────────────────────────────────────────────────────────────
+// sessions.js exports { router, createSession, ... } — extract .router
+const sessionsModule = require('./routes/sessions');
+// FIX: sessions exports an object; pull out the router property
+const sessionsRouter = sessionsModule.router || sessionsModule;
+
+// Expose createSession globally so auth.js can import it
+// (auth.js does: const { createSession, TIMEOUTS, WARNINGS } = require('./sessions'))
+// This is fine as long as sessions.js is loaded before auth.js — which it is here.
+
+app.use('/api/auth',            require('./routes/auth'));
+app.use('/api/products',        require('./routes/products'));
+app.use('/api/customers',       require('./routes/customers'));
+app.use('/api/orders',          require('./routes/orders'));
+app.use('/api/users',           require('./routes/users'));
+app.use('/api/payments',        require('./routes/payments'));
+app.use('/api/sessions',        sessionsRouter);
+
+// ─── allRoutes bundle ─────────────────────────────────────────────────────────
+const {
+  categoriesRouter,
+  expensesRouter,
+  suppliersRouter,
+  settingsRouter,
+  activityRouter,
+  inventoryRouter,
+  reportsRouter,
+  discountsRouter,
+  quotesRouter,
+  staffRouter,
+  layawaysRouter,
+  debtsRouter,
+  feedbackRouter,
+  cashFloatRouter,
+  purchaseOrdersRouter,
+  uploadsRouter,
+} = require('./routes/allRoutes');
+
 app.use('/api/categories',      categoriesRouter);
 app.use('/api/expenses',        expensesRouter);
 app.use('/api/suppliers',       suppliersRouter);
