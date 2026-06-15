@@ -1,11 +1,11 @@
 {
   "version": 2,
   "name": "villavogue-bms",
+  "rootDirectory": "frontend",
   "installCommand": "npm install",
-  "buildCommand": "chmod +x node_modules/.bin/vite && node_modules/.bin/vite build",
+  "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
-  
