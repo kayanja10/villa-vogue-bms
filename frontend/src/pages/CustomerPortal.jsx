@@ -32,11 +32,13 @@ const useTheme = () => useContext(ThemeContext);
 const ToastCtx = createContext();
 const useToast = () => useContext(ToastCtx);
 
-const GlobalStyles = () => {
-  useEffect(() => {
-    const s = document.createElement("style");
-    s.id = "vv-g";
-    s.textContent = `
+// Inject styles ONCE at module load time — never removed — so navigating away
+// and back (or any React remount) can never wipe out the CSS and blank the page.
+(() => {
+  if (typeof document === "undefined" || document.getElementById("vv-g")) return;
+  const s = document.createElement("style");
+  s.id = "vv-g";
+  s.textContent = `
       @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=DM+Sans:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;1,400&display=swap');
       *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
       :root{--gold:#C9A84C;--gold-l:#E8C96B;--gold-d:#9A7A2F;--gg:rgba(201,168,76,.35);--rxl:28px;--sl:0 20px 60px rgba(0,0,0,.18),0 4px 16px rgba(201,168,76,.1);--tr:all .35s cubic-bezier(.4,0,.2,1);--fd:'Cormorant Garamond',Georgia,serif;--fb:'DM Sans',sans-serif;--fe:'Playfair Display',Georgia,serif}
@@ -88,11 +90,11 @@ const GlobalStyles = () => {
       @media(max-width:900px){.dn{display:none!important}}
       @media(max-width:768px){.mm{min-width:calc(100vw - 32px)}.vd{width:100vw}.vm>div{grid-template-columns:1fr!important}}
     `;
-    document.head.appendChild(s);
-    return () => document.getElementById("vv-g")?.remove();
-  }, []);
-  return null;
-};
+  document.head.appendChild(s);
+})();
+
+// No-op component — styles are already injected above
+const GlobalStyles = () => null;
 
 const IC = ({ n, sz=20, c="currentColor" }) => {
   const ic = {
@@ -318,11 +320,15 @@ const SearchOverlay = ({open,onClose,products=[]}) => {
   const [res,setRes]=useState([]);
   const ir=useRef(null);
   const db=useRef(null);
+  // Normalize backend fields for search results
+  const normProds=products.map(p=>({...p,
+    image_url:p.image_url||(()=>{try{const a=JSON.parse(p.images||"[]");return a[0]||null;}catch{return null;}})(),
+  }));
   useEffect(()=>{if(open)setTimeout(()=>ir.current?.focus(),100);else setQ("");},[open]);
   useEffect(()=>{
     clearTimeout(db.current);
     db.current=setTimeout(()=>{
-      if(q.length>1)setRes(products.filter(p=>p.name?.toLowerCase().includes(q.toLowerCase())).slice(0,6));
+      if(q.length>1)setRes(normProds.filter(p=>p.name?.toLowerCase().includes(q.toLowerCase())).slice(0,6));
       else setRes([]);
     },250);
   },[q,products]);
@@ -686,7 +692,17 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
     price:[450000,380000,620000,290000,520000,180000][i],category:["Dresses","Blazers","Bags","Trousers","Knitwear","Jewelry"][i],
     rating:[4.8,4.6,4.9,4.5,4.7,4.8][i],review_count:[124,89,203,67,145,312][i],is_new:i<3,stock_quantity:10,
   }));
-  const dp=products?.length>0?products.slice(0,8):demo;
+  // Normalize backend fields → portal field names:
+  //   stock (backend)  → stock_quantity (portal)
+  //   images (backend JSON string) → image_url (portal)
+  const normalize = (p) => ({
+    ...p,
+    stock_quantity: p.stock_quantity ?? p.stock ?? 0,
+    image_url: p.image_url || (() => {
+      try { const imgs = JSON.parse(p.images || "[]"); return imgs[0] || null; } catch { return null; }
+    })(),
+  });
+  const dp=products?.length>0?products.slice(0,8).map(normalize):demo;
   return (
     <section style={{padding:"80px 0",background:"var(--bs)"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>

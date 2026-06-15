@@ -83,6 +83,8 @@ export default function Dashboard() {
     queryKey: ['dashboard'],
     queryFn: () => analytics.dashboard().then(r => r.data),
     refetchInterval: 60000,
+    // Keep showing stale data while refetching — prevents the loading flash every minute
+    keepPreviousData: true,
   });
 
   const { data: aiSummary, isLoading: aiLoading, refetch: refetchAI } = useQuery({
@@ -90,12 +92,15 @@ export default function Dashboard() {
     queryFn: () => ai.summary().then(r => r.data),
     staleTime: 300000,
     enabled: !!data,
+    // AI endpoints are optional — don't retry on failure, don't crash the page
+    retry: false,
   });
 
   const { data: forecast } = useQuery({
     queryKey: ['ai-forecast'],
     queryFn: () => ai.forecast().then(r => r.data),
     staleTime: 300000,
+    retry: false,
   });
 
   const askAI = useMutation({
