@@ -12,8 +12,9 @@ const server = http.createServer(app);
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://villa-vogue-bms-b16k.vercel.app',
-  /^https:\/\/villa-vogue-bms.*\.vercel\.app$/,
+  'https://villa-vogue-bms-b16k.vercel.app',  // old deployment
+  'https://villa-vogue-bms-dpth.vercel.app',  // current deployment
+  /^https:\/\/villa-vogue-bms.*\.vercel\.app$/, // all future preview deployments
 ];
 
 app.use(cors({
@@ -66,6 +67,10 @@ app.use('/api/orders',          require('./routes/orders'));
 app.use('/api/users',           require('./routes/users'));
 app.use('/api/payments',        require('./routes/payments'));
 app.use('/api/sessions',        sessionsRouter);
+app.use('/api/analytics',       require('./routes/analytics'));
+app.use('/api/cashbook',        require('./routes/cashbook'));
+app.use('/api/notifications',   require('./routes/notifications'));
+app.use('/api/ai',              require('./routes/ai'));
 
 // ─── allRoutes bundle ─────────────────────────────────────────────────────────
 const {

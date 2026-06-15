@@ -686,23 +686,20 @@ const CollectionsSection = () => {
   );
 };
 
+// Normalize backend product fields → portal field names
+// Backend sends: stock (number), images (JSON string "[url,...]")
+// Portal expects: stock_quantity, image_url
+const normalizeProduct = (p) => ({
+  ...p,
+  stock_quantity: p.stock_quantity ?? p.stock ?? 0,
+  image_url: p.image_url || (() => {
+    try { const a = JSON.parse(p.images || "[]"); return a[0] || null; } catch { return null; }
+  })(),
+});
+
 const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading}) => {
-  const demo=Array(6).fill(null).map((_,i)=>({
-    id:`demo-${i}`,name:["Silk Evening Gown","Tailored Blazer","Luxury Handbag","Pleated Trousers","Cashmere Knit","Pearl Earrings"][i],
-    price:[450000,380000,620000,290000,520000,180000][i],category:["Dresses","Blazers","Bags","Trousers","Knitwear","Jewelry"][i],
-    rating:[4.8,4.6,4.9,4.5,4.7,4.8][i],review_count:[124,89,203,67,145,312][i],is_new:i<3,stock_quantity:10,
-  }));
-  // Normalize backend fields → portal field names:
-  //   stock (backend)  → stock_quantity (portal)
-  //   images (backend JSON string) → image_url (portal)
-  const normalize = (p) => ({
-    ...p,
-    stock_quantity: p.stock_quantity ?? p.stock ?? 0,
-    image_url: p.image_url || (() => {
-      try { const imgs = JSON.parse(p.images || "[]"); return imgs[0] || null; } catch { return null; }
-    })(),
-  });
-  const dp=products?.length>0?products.slice(0,8).map(normalize):demo;
+  // Normalize all real products — never fall back to demo/fake data
+  const dp = (products || []).map(normalizeProduct);
   return (
     <section style={{padding:"80px 0",background:"var(--bs)"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
@@ -715,13 +712,24 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
           </div>
         </Reveal>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(246px,1fr))",gap:22}}>
-          {loading?Array(8).fill(null).map((_,i)=><SkCard key={i}/>):
-            dp.map((p,i)=>(
-              <Reveal key={p.id} delay={i*.05}>
-                <ProductCard product={p} onAddToCart={onAddToCart} onQuickView={onQuickView}
-                  onWishlistToggle={onWishlistToggle} wishlisted={wishlist.some(w=>w.id===p.id)}/>
-              </Reveal>
-            ))
+          {loading
+            // Show skeleton cards while fetching
+            ? Array(8).fill(null).map((_,i)=><SkCard key={i}/>)
+            : dp.length > 0
+              ? dp.slice(0,8).map((p,i)=>(
+                  <Reveal key={p.id} delay={i*.05}>
+                    <ProductCard product={p} onAddToCart={onAddToCart} onQuickView={onQuickView}
+                      onWishlistToggle={onWishlistToggle} wishlisted={wishlist.some(w=>w.id===p.id)}/>
+                  </Reveal>
+                ))
+              // Empty state — no fake products, just a clear message
+              : (
+                <div style={{gridColumn:"1/-1",textAlign:"center",padding:"60px 0"}}>
+                  <div style={{fontFamily:"var(--fd)",fontSize:32,opacity:.15,marginBottom:16}}>VV</div>
+                  <p style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:300,color:"var(--ts)"}}>New arrivals coming soon</p>
+                  <p style={{fontSize:13,color:"var(--tm)",marginTop:8}}>Our collection is being curated. Check back shortly.</p>
+                </div>
+              )
           }
         </div>
       </div>
