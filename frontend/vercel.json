@@ -1,7 +1,6 @@
 {
   "version": 2,
   "name": "villavogue-bms",
-  "rootDirectory": "frontend",
   "installCommand": "npm install",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
