@@ -1,53 +1,74 @@
 import { useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { useStore } from '../store/useStore';
+import toast from 'react-hot-toast';
 
-let socket = null;
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://villa-vogue-bms.onrender.com';
+
+let socketInstance = null; // singleton — one socket for the whole app
 
 export function useSocket() {
-  const { user, addAlert } = useStore();
-  const connected = useRef(false);
+  const { token, user } = useStore();
+  const ref = useRef(null);
 
   useEffect(() => {
-    if (!user || connected.current) return;
+    if (!token || !user) return;
 
-    socket = io(import.meta.env.VITE_SOCKET_URL || window.location.origin, {
+    // Reuse existing socket if already connected
+    if (socketInstance && socketInstance.connected) {
+      ref.current = socketInstance;
+      window.__vv_socket = socketInstance;
+      return;
+    }
+
+    const socket = io(SOCKET_URL, {
+      auth: { token },
       transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 2000,
     });
 
     socket.on('connect', () => {
-      connected.current = true;
-      socket.emit('join:room', user.role);
-      socket.emit('join:room', 'all');
+      console.log('[Socket] Connected:', socket.id);
     });
 
-    socket.on('order:created', (data) => {
-      addAlert({ type: 'success', message: `New order by ${data.user || 'staff'}`, icon: '🛍️' });
+    socket.on('disconnect', () => {
+      console.log('[Socket] Disconnected');
     });
 
-    socket.on('stock:updated', (data) => {
-      if (data.stock <= 3) addAlert({ type: 'warning', message: `Low stock alert: Product #${data.productId}`, icon: '⚠️' });
+    // ── Global order events ─────────────────────────────────────────────────
+    socket.on('order:created', ({ order, user: by }) => {
+      // Only show toast for POS orders here — online orders handled by Dashboard
+      if (order?.orderSource !== 'online') {
+        toast.success(`Order ${order?.orderNumber} created by ${by}`);
+      }
     });
 
-    socket.on('payment:confirmed', (data) => {
-      addAlert({ type: 'success', message: `Payment confirmed for order #${data.orderId}`, icon: '💰' });
+    // ── Stock alerts ────────────────────────────────────────────────────────
+    socket.on('stock:alert', ({ product, stock }) => {
+      toast(`⚠️ Low stock: ${product} (${stock} left)`, { icon: '📦', duration: 6000 });
     });
 
-    socket.on('system:alert', (msg) => {
-      addAlert({ type: 'info', message: msg, icon: 'ℹ️' });
+    // ── Session events ──────────────────────────────────────────────────────
+    socket.on('session:expired', () => {
+      toast.error('Your session has expired. Please log in again.');
     });
 
-    socket.on('disconnect', () => { connected.current = false; });
+    socket.on('force:logout', () => {
+      toast.error('You have been logged out by an administrator.');
+      useStore.getState().logout();
+    });
+
+    socketInstance = socket;
+    ref.current = socket;
+    // Expose globally so Dashboard (and any component) can listen to 'online:order'
+    window.__vv_socket = socket;
 
     return () => {
-      socket?.disconnect();
-      connected.current = false;
+      // Don't disconnect on component unmount — keep alive for the session
+      // Only clean up listeners that are local to this hook
     };
-  }, [user]);
+  }, [token, user]);
 
-  return socket;
+  return ref.current;
 }
-
-export function getSocket() { return socket; }

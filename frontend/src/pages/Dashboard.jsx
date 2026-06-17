@@ -1,16 +1,62 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   TrendingUp, TrendingDown, ShoppingBag, Users, Package, DollarSign,
   AlertTriangle, ArrowRight, Bell, Sparkles, Send, RefreshCw,
   XCircle, CheckCircle, Zap, Target, ChevronRight, ArrowUp, ArrowDown,
+  ShoppingCart, Phone, Truck, X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { analytics, ai, notifications } from '../lib/api';
 import { useStore } from '../store/useStore';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
+
+// ── Online Order Alert Banner ────────────────────────────────────────────────
+function OnlineOrderBanner({ order, onDismiss }) {
+  return (
+    <div className="animate-fade-in" style={{
+      background: 'linear-gradient(135deg, #0d4f2a, #1a7a3f)',
+      border: '1px solid #2d9e52',
+      borderRadius: 14,
+      padding: '14px 18px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: 14,
+      boxShadow: '0 4px 20px rgba(37,211,102,.25)',
+    }}>
+      <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(255,255,255,.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <ShoppingCart size={20} color="#fff" />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ color: '#fff', fontWeight: 700, fontSize: 14, marginBottom: 2 }}>
+          🔔 New Online Order — {order.orderNumber}
+        </p>
+        <p style={{ color: 'rgba(255,255,255,.75)', fontSize: 12 }}>
+          {order.customerName}
+          {order.customerPhone && <span> · <Phone size={10} style={{ display: 'inline', marginRight: 2 }} />{order.customerPhone}</span>}
+          {' · '}
+          {order.items} item{order.items !== 1 ? 's' : ''}
+          {' · '}
+          UGX {Number(order.total).toLocaleString()}
+          {' · '}
+          {order.deliveryType === 'delivery' ? <span><Truck size={10} style={{ display: 'inline' }} /> Delivery</span> : '🏪 Pickup'}
+          {' · '}
+          <span style={{ textTransform: 'capitalize' }}>{order.paymentMethod?.replace(/_/g, ' ')}</span>
+        </p>
+      </div>
+      <Link to="/orders" style={{ textDecoration: 'none' }}>
+        <button style={{ background: '#25D366', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          View Order
+        </button>
+      </Link>
+      <button onClick={onDismiss} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.6)', padding: 4, flexShrink: 0 }}>
+        <X size={16} />
+      </button>
+    </div>
+  );
+}
 
 const fmt = (n) => {
   if (!n) return '0';
@@ -75,16 +121,49 @@ const AI_QUICK_QUESTIONS = [
 
 export default function Dashboard() {
   const { user } = useStore();
+  const queryClient = useQueryClient();
   const [aiQuestion, setAiQuestion] = useState('');
   const [aiResponse, setAiResponse] = useState(null);
   const [showAI, setShowAI] = useState(false);
+  // Online order notifications queue
+  const [onlineAlerts, setOnlineAlerts] = useState([]);
+
+  // ── Listen for online orders via Socket.IO ──────────────────────────────
+  useEffect(() => {
+    // The app's global socket is on window.__vv_socket (set by useSocket hook)
+    // We also try the common io() patterns
+    const socket = window.__vv_socket || window.socket;
+    if (!socket) return;
+
+    const handler = (order) => {
+      // Play a notification sound
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+      } catch {}
+
+      // Show toast + add to banner queue
+      toast.success(`🛍 New online order: ${order.orderNumber} — UGX ${Number(order.total).toLocaleString()}`, { duration: 8000 });
+      setOnlineAlerts(prev => [{ ...order, _key: Date.now() }, ...prev].slice(0, 5));
+      // Refresh orders list
+      queryClient.invalidateQueries(['dashboard']);
+    };
+
+    socket.on('online:order', handler);
+    return () => socket.off('online:order', handler);
+  }, [queryClient]);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => analytics.dashboard().then(r => r.data),
     refetchInterval: 60000,
-    // Keep showing stale data while refetching — prevents the loading flash every minute
-    keepPreviousData: true,
   });
 
   const { data: aiSummary, isLoading: aiLoading, refetch: refetchAI } = useQuery({
@@ -92,15 +171,12 @@ export default function Dashboard() {
     queryFn: () => ai.summary().then(r => r.data),
     staleTime: 300000,
     enabled: !!data,
-    // AI endpoints are optional — don't retry on failure, don't crash the page
-    retry: false,
   });
 
   const { data: forecast } = useQuery({
     queryKey: ['ai-forecast'],
     queryFn: () => ai.forecast().then(r => r.data),
     staleTime: 300000,
-    retry: false,
   });
 
   const askAI = useMutation({
@@ -133,6 +209,14 @@ export default function Dashboard() {
   return (
     <div className="space-y-4 animate-fade-in">
 
+      {/* ── Online Order Alerts (real-time) ── */}
+      {onlineAlerts.length > 0 && (
+        <div className="space-y-2">
+          {onlineAlerts.map((o) => (
+            <OnlineOrderBanner key={o._key} order={o} onDismiss={() => setOnlineAlerts(p => p.filter(a => a._key !== o._key))} />
+          ))}
+        </div>
+      )}
       {/* ── HEADER ── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>

@@ -13,6 +13,19 @@ function generateOrderNumber() {
   return `VV${y}${m}${d}-${rand}`;
 }
 
+// ── Allow portal (online) orders without staff JWT ───────────────────────────
+// If Authorization header is present and valid → sets req.user (staff/POS flow)
+// If no header or invalid → req.user = null (online portal flow)
+const optionalAuth = (req, res, next) => {
+  const header = req.headers.authorization;
+  if (!header) return next(); // no token → portal order, allowed
+  // Reuse the real authenticate middleware but swallow 401 errors
+  authenticate(req, res, (err) => {
+    if (err) req.user = null; // bad token → treat as portal order
+    next();
+  });
+};
+
 // GET /api/orders
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -61,73 +74,124 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // POST /api/orders
-router.post('/', authenticate, async (req, res) => {
+// Accepts both staff (authenticated) and portal (unauthenticated) orders
+router.post('/', optionalAuth, async (req, res) => {
   try {
-    const { customerId, customerName, customerPhone, customerEmail, items, subtotal, discount, discountType, tax, total, paymentMethod, notes, orderSource } = req.body;
-    
+    const {
+      customerId, customerName, customerPhone, customerEmail,
+      items, subtotal, discount, discountType, tax, total,
+      paymentMethod, notes, orderSource,
+      // Online-order-specific fields from CustomerPortal checkout
+      source, deliveryType, deliveryAddress, deliveryFee,
+      selectedSize, selectedColor, momoNumber,
+    } = req.body;
+
+    // Normalise source — portal sends { source: 'online' }, POS sends { orderSource: 'pos' }
+    const resolvedSource = source || orderSource || (req.user ? 'pos' : 'online');
+    const isOnlineOrder = resolvedSource === 'online';
+
     const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
 
     // Validate stock
     for (const item of parsedItems) {
       const product = await prisma.product.findUnique({ where: { id: item.productId } });
-      if (!product) return res.status(400).json({ error: `Product ${item.name} not found` });
-      if (product.stock < item.quantity) return res.status(400).json({ error: `Insufficient stock for ${item.name}. Available: ${product.stock}` });
+      if (!product) return res.status(400).json({ error: `Product ${item.name || item.productId} not found` });
+      if (product.stock < item.quantity) return res.status(400).json({ error: `Insufficient stock for ${product.name}. Available: ${product.stock}` });
     }
 
     const order = await prisma.$transaction(async (tx) => {
       const newOrder = await tx.order.create({
         data: {
-          orderNumber: generateOrderNumber(),
-          customerId: customerId ? parseInt(customerId) : null,
-          customerName: customerName || 'Walk-in Customer',
-          customerPhone,
-          customerEmail,
-          items: JSON.stringify(parsedItems),
-          subtotal: parseFloat(subtotal || 0),
-          discount: parseFloat(discount || 0),
-          discountType: discountType || 'fixed',
-          tax: parseFloat(tax || 0),
-          total: parseFloat(total),
+          orderNumber:   generateOrderNumber(),
+          customerId:    customerId ? parseInt(customerId) : null,
+          customerName:  customerName || 'Online Customer',
+          customerPhone: customerPhone || null,
+          customerEmail: customerEmail || null,
+          items:         JSON.stringify(parsedItems),
+          subtotal:      parseFloat(subtotal || total || 0),
+          discount:      parseFloat(discount || 0),
+          discountType:  discountType || 'fixed',
+          tax:           parseFloat(tax || 0),
+          total:         parseFloat(total),
           paymentMethod: paymentMethod || 'cash',
-          paymentStatus: 'paid',
-          orderStatus: 'completed',
-          orderSource: orderSource || 'pos',
-          notes,
-          servedBy: req.user.id,
+          // Online orders start as 'pending' so staff can confirm; POS orders are 'completed'
+          paymentStatus: isOnlineOrder ? 'pending' : 'paid',
+          orderStatus:   isOnlineOrder ? 'pending'   : 'completed',
+          orderSource:   resolvedSource,
+          notes: [
+            notes,
+            deliveryType  ? `Delivery: ${deliveryType}`    : null,
+            deliveryAddress ? `Address: ${deliveryAddress}` : null,
+            deliveryFee   ? `Delivery fee: UGX ${deliveryFee}` : null,
+            momoNumber    ? `MoMo/Airtel: ${momoNumber}`   : null,
+          ].filter(Boolean).join(' | ') || null,
+          // servedBy is optional — null for online orders
+          servedBy: req.user?.id || null,
         },
       });
 
-      // Deduct stock for each item
+      // Deduct stock
       for (const item of parsedItems) {
         await tx.product.update({
           where: { id: item.productId },
-          data: { stock: { decrement: item.quantity } },
+          data:  { stock: { decrement: item.quantity } },
         });
         await tx.stockMovement.create({
-          data: { productId: item.productId, type: 'out', quantity: item.quantity, reason: 'Sale', reference: newOrder.orderNumber, userId: req.user.id },
+          data: {
+            productId: item.productId,
+            type:      'out',
+            quantity:  item.quantity,
+            reason:    isOnlineOrder ? 'Online Order' : 'Sale',
+            reference: newOrder.orderNumber,
+            userId:    req.user?.id || null,
+          },
         });
       }
 
-      // Update customer stats
+      // Update customer loyalty if known
       if (customerId) {
         const loyaltyEarned = Math.floor(parseFloat(total) / 1000);
         await tx.customer.update({
           where: { id: parseInt(customerId) },
-          data: { totalSpent: { increment: parseFloat(total) }, visitCount: { increment: 1 }, loyaltyPoints: { increment: loyaltyEarned } },
+          data:  { totalSpent: { increment: parseFloat(total) }, visitCount: { increment: 1 }, loyaltyPoints: { increment: loyaltyEarned } },
         });
       }
 
       return newOrder;
     });
 
-    await prisma.activityLog.create({
-      data: { userId: req.user.id, username: req.user.username, action: 'create_order', entityType: 'order', entityId: String(order.id), details: JSON.stringify({ orderNumber: order.orderNumber, total: order.total }) }
-    });
+    // Activity log (only when a staff member is logged in)
+    if (req.user) {
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user.id, username: req.user.username,
+          action: 'create_order', entityType: 'order', entityId: String(order.id),
+          details: JSON.stringify({ orderNumber: order.orderNumber, total: order.total }),
+        },
+      });
+    }
 
-    global.io?.emit('order:created', { order, user: req.user.username });
+    // ── Real-time notifications ──────────────────────────────────────────────
+    // Standard order event (updates order list in dashboard)
+    global.io?.emit('order:created', { order, user: req.user?.username || 'Online Store' });
     global.io?.emit('stock:bulk-update', parsedItems.map(i => i.productId));
 
-    res.status(201).json(order);
+    // 🔔 Special alert for ONLINE orders — pops up for all logged-in staff
+    if (isOnlineOrder) {
+      global.io?.emit('online:order', {
+        id:           order.id,
+        orderNumber:  order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        total:        order.total,
+        items:        parsedItems.length,
+        deliveryType: deliveryType || 'pickup',
+        paymentMethod: order.paymentMethod,
+        createdAt:    order.createdAt,
+      });
+    }
+
+    res.status(201).json({ ...order, orderNumber: order.orderNumber });
   } catch (err) {
     console.error('Create order error:', err);
     res.status(500).json({ error: err.message });
