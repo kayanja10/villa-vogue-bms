@@ -687,14 +687,18 @@ const CollectionsSection = () => {
 };
 
 // Normalize backend product fields → portal field names
-// Backend sends: stock (number), images (JSON string "[url,...]")
-// Portal expects: stock_quantity, image_url
+// Backend sends: stock (number), images (JSON string "[url,...]"),
+//   category (object {id,name} or string), brand (object or string)
+// Portal expects: stock_quantity, image_url, category (string), brand (string)
 const normalizeProduct = (p) => ({
   ...p,
   stock_quantity: p.stock_quantity ?? p.stock ?? 0,
   image_url: p.image_url || (() => {
     try { const a = JSON.parse(p.images || "[]"); return a[0] || null; } catch { return null; }
   })(),
+  // Flatten any object fields that get rendered as text — prevents React error #31
+  category: typeof p.category === "object" && p.category !== null ? p.category.name || "" : (p.category || ""),
+  brand:    typeof p.brand    === "object" && p.brand    !== null ? p.brand.name    || "" : (p.brand    || ""),
 });
 
 const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading}) => {
