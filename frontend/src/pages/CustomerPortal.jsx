@@ -864,6 +864,8 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
     </AnimatePresence>
   );
 };
+
+const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
   const toast=useToast();
   return (
     <AnimatePresence>
@@ -1203,7 +1205,7 @@ const Footer = () => (
           <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:300,letterSpacing:".2em",marginBottom:5}}>VILLA VOGUE</div>
           <div style={{fontSize:9,letterSpacing:".3em",color:"var(--gold)",textTransform:"uppercase",marginBottom:18}}>Luxury Fashion Uganda</div>
           <p style={{fontSize:13,color:"var(--tm)",lineHeight:1.8}}>Premium fashion for the modern Ugandan lifestyle. Crafted with elegance, delivered with care.</p>
-          <a href="https://wa.me/256000000000" target="_blank" rel="noopener noreferrer"
+          <a href="https://wa.me/256726983483" target="_blank" rel="noopener noreferrer"
             style={{display:"inline-flex",alignItems:"center",gap:7,marginTop:18,padding:"9px 16px",background:"#25D366",color:"#fff",borderRadius:50,textDecoration:"none",fontSize:12,fontWeight:600}}>
             <IC n="wa" sz={14} c="#fff"/> Chat on WhatsApp
           </a>
@@ -1240,46 +1242,108 @@ const Footer = () => (
   </footer>
 );
 
-const LoginModal = ({open,onClose,onLogin,isStaffMode}) => {
-  const [em,setEm]=useState("");
-  const [pw,setPw]=useState("");
+const LoginModal = ({open,onClose,onLogin,onStaffLogin}) => {
+  const [mode,setMode]=useState("login"); // login | register
   const [ld,setLd]=useState(false);
   const toast=useToast();
-  const sub=async()=>{
-    if(!em||!pw){toast("Please fill in all fields","e","!");return;}
+  const [form,setForm]=useState({name:"",email:"",phone:"",password:"",confirm:""});
+  const fi=(f,v)=>setForm(p=>({...p,[f]:v}));
+
+  const handleLogin=async()=>{
+    if(!form.email||!form.password){toast("Please fill in all fields","e","!");return;}
     setLd(true);
-    try{await onLogin({email:em,password:pw,isStaff:isStaffMode});onClose();}
-    catch(e){toast(e.message||"Login failed","e","✗");}
+    try{await onLogin({email:form.email,password:form.password,isStaff:false});onClose();}
+    catch(e){toast(e.response?.data?.message||e.message||"Login failed. Check your email and password.","e","✗");}
     finally{setLd(false);}
   };
+
+  const handleRegister=async()=>{
+    if(!form.name||!form.email||!form.phone||!form.password){toast("Please fill in all required fields","e","!");return;}
+    if(form.password!==form.confirm){toast("Passwords do not match","e","✗");return;}
+    if(form.password.length<6){toast("Password must be at least 6 characters","e","!");return;}
+    setLd(true);
+    try{
+      const res=await fetch(`${BASE_API}/customers/portal/register`,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({name:form.name,email:form.email,phone:form.phone,password:form.password}),
+      });
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||data.message||"Registration failed");
+      toast("Account created! Please sign in.","ok","✦");
+      setMode("login");
+      setForm(p=>({...p,name:"",phone:"",password:"",confirm:""}));
+    }catch(e){toast(e.message||"Registration failed","e","✗");}
+    finally{setLd(false);}
+  };
+
+  const inp=(label,field,type="text",placeholder="")=>(
+    <div>
+      <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>{label}</label>
+      <input className="vi" type={type} value={form[field]} onChange={e=>fi(field,e.target.value)}
+        placeholder={placeholder} onKeyDown={e=>e.key==="Enter"&&(mode==="login"?handleLogin():null)}
+        style={{width:"100%",padding:"12px 14px",fontSize:13}}/>
+    </div>
+  );
+
   return (
     <AnimatePresence>
       {open&&(
-        <motion.div className="mb" onClick={e=>e.target===e.currentTarget&&onClose()} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-          <motion.div initial={{opacity:0,scale:.94}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.96}}
-            style={{position:"relative",background:"var(--bgs)",backdropFilter:"blur(32px)",border:"1px solid var(--br)",borderRadius:"var(--rxl)",padding:38,width:"100%",maxWidth:390,boxShadow:"var(--sl)"}}>
+        <motion.div className="mb" onClick={e=>e.target===e.currentTarget&&onClose()}
+          initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} style={{zIndex:2600}}>
+          <motion.div initial={{opacity:0,scale:.94,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.96}}
+            style={{position:"relative",background:"var(--bgs)",backdropFilter:"blur(32px)",border:"1px solid var(--br)",
+              borderRadius:"var(--rxl)",padding:"32px 30px",width:"100%",maxWidth:400,boxShadow:"var(--sl)"}}>
             <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={14}/></button>
-            <div style={{textAlign:"center",marginBottom:28}}>
+
+            {/* Logo */}
+            <div style={{textAlign:"center",marginBottom:24}}>
               <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:300,letterSpacing:".2em",marginBottom:4}}>VILLA VOGUE</div>
-              <p className="ll">{isStaffMode?"Staff Portal":"Welcome Back"}</p>
+              <p className="ll">{mode==="login"?"Welcome Back":"Create Account"}</p>
             </div>
-            <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:22}}>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:7}}>Email</label>
-                <input className="vi" type="email" value={em} onChange={e=>setEm(e.target.value)} placeholder="your@email.com" style={{width:"100%",padding:"12px 14px",fontSize:14}}/>
-              </div>
-              <div>
-                <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:7}}>Password</label>
-                <input className="vi" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&sub()} style={{width:"100%",padding:"12px 14px",fontSize:14}}/>
-              </div>
+
+            {/* Tab switcher */}
+            <div style={{display:"flex",background:"var(--ib)",borderRadius:50,padding:3,marginBottom:24}}>
+              {[{k:"login",l:"Sign In"},{k:"register",l:"Register"}].map(t=>(
+                <button key={t.k} onClick={()=>{setMode(t.k);setForm({name:"",email:"",phone:"",password:"",confirm:""});}}
+                  style={{flex:1,padding:"8px",borderRadius:50,border:"none",cursor:"pointer",fontSize:13,fontWeight:600,transition:"all .2s",
+                    background:mode===t.k?"linear-gradient(135deg,var(--gold-d),var(--gold))":"transparent",
+                    color:mode===t.k?"#000":"var(--tm)"}}>
+                  {t.l}
+                </button>
+              ))}
             </div>
-            <motion.button className="bg" onClick={sub} disabled={ld} whileTap={{scale:.97}}
-              style={{width:"100%",padding:"14px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:ld?.7:1}}>
-              {ld?"Signing in…":isStaffMode?<><IC n="staff" sz={15}/> Staff Login</>:<><IC n="user" sz={15}/> Sign In</>}
+
+            <div style={{display:"flex",flexDirection:"column",gap:13,marginBottom:20}}>
+              {mode==="register"&&inp("Full Name *","name","text","Jane Nakato")}
+              {inp("Email Address *","email","email","jane@example.com")}
+              {mode==="register"&&inp("Phone Number *","phone","tel","+256 7XX XXX XXX")}
+              {inp("Password *","password","password","••••••••")}
+              {mode==="register"&&inp("Confirm Password *","confirm","password","••••••••")}
+            </div>
+
+            <motion.button className="bg" onClick={mode==="login"?handleLogin:handleRegister}
+              disabled={ld} whileTap={{scale:.97}}
+              style={{width:"100%",padding:"13px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:16,opacity:ld?.7:1}}>
+              {ld
+                ?<><span style={{width:14,height:14,border:"2px solid rgba(0,0,0,.3)",borderTopColor:"#000",borderRadius:"50%",display:"inline-block",animation:"spin 1s linear infinite"}}/>{mode==="login"?"Signing in…":"Creating account…"}</>
+                :mode==="login"?<><IC n="user" sz={14}/> Sign In</>:<><IC n="check" sz={14}/> Create Account</>
+              }
             </motion.button>
-            <div style={{textAlign:"center",marginTop:18,display:"flex",flexDirection:"column",gap:9}}>
-              <a href="/forgot-password" style={{fontSize:13,color:"var(--gold)",textDecoration:"none"}}>Forgot password?</a>
-              {!isStaffMode&&<p style={{fontSize:13,color:"var(--tm)"}}>New customer? <a href="/register" style={{color:"var(--gold)",textDecoration:"none"}}>Create account</a></p>}
+
+            {mode==="login"&&(
+              <p style={{textAlign:"center",fontSize:12,color:"var(--tm)"}}>
+                Forgot password? <a href="#" onClick={e=>{e.preventDefault();toast("Contact us on WhatsApp to reset your password","i","💬");}}
+                  style={{color:"var(--gold)",textDecoration:"none"}}>Get help</a>
+              </p>
+            )}
+
+            {/* Staff login separator */}
+            <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid var(--br)",textAlign:"center"}}>
+              <p style={{fontSize:11,color:"var(--tm)",marginBottom:8}}>Are you a Villa Vogue staff member?</p>
+              <button onClick={()=>{onClose();onStaffLogin?.();}} className="bgh"
+                style={{fontSize:12,padding:"7px 18px",display:"inline-flex",alignItems:"center",gap:6}}>
+                <IC n="staff" sz={13}/> Staff Login
+              </button>
             </div>
           </motion.div>
         </motion.div>
@@ -1480,7 +1544,7 @@ const PortalShell = ({
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
       <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout}/>
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}/>
-      <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} isStaffMode={staffMode}/>
+      <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} onStaffLogin={handleStaffLogin}/>
       <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
         onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
       <WhatsAppFloat/>
