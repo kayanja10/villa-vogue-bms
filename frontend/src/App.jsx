@@ -44,20 +44,6 @@ function CustomerPortalWrapper() {
   const [portalOrders,   setPortalOrders]   = useState([]);
   const [loading,        setLoading]        = useState(true);
 
-  // ── Normalise backend product fields → portal field names ──────────────────
-  // Backend sends: stock (number), images (JSON string "[url,...]")
-  // Portal expects: stock_quantity, image_url
-  const normalizeProducts = (items) =>
-    Array.isArray(items)
-      ? items.map((p) => ({
-          ...p,
-          stock_quantity: p.stock_quantity ?? p.stock ?? 0,
-          image_url: p.image_url || (() => {
-            try { const a = JSON.parse(p.images || '[]'); return a[0] || null; } catch { return null; }
-          })(),
-        }))
-      : [];
-
   // ── Fetch products on mount ─────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
@@ -73,14 +59,14 @@ function CustomerPortalWrapper() {
           res = await productsApi.list({ limit: 100 });
           items = res.data?.products || res.data?.data || res.data || [];
         }
-        if (!cancelled) setPortalProducts(normalizeProducts(items));
+        if (!cancelled) setPortalProducts(Array.isArray(items) ? items : []);
       } catch {
         // Attempt 3: raw fetch — MUST use /products/public (no auth required)
         // BUG FIX: was incorrectly hitting /products which requires JWT auth
         try {
           const r = await fetch(`${BASE}/products/public?limit=100`);
           const d = await r.json();
-          if (!cancelled) setPortalProducts(normalizeProducts(d?.products || d?.data || (Array.isArray(d) ? d : [])));
+          if (!cancelled) setPortalProducts(d?.products || d?.data || (Array.isArray(d) ? d : []));
         } catch {
           if (!cancelled) setPortalProducts([]);
         }
@@ -153,6 +139,14 @@ function Guard({ children, admin, manager }) {
   return children;
 }
 
+// Redirects already-logged-in STAFF away from /login to dashboard
+// Does NOT affect the /store route — customers are separate
+function LoginGuard({ children }) {
+  const { user } = useStore();
+  if (user) return <Navigate to="/" replace />;
+  return children;
+}
+
 export default function App() {
   const { darkMode } = useStore();
   useEffect(() => { document.documentElement.classList.toggle('dark', darkMode); }, [darkMode]);
@@ -168,7 +162,9 @@ export default function App() {
           duration: 4000,
         }} />
         <Routes>
-          <Route path="/login" element={<Login />} />
+          {/* /login — staff only; redirects to dashboard if already logged in */}
+          <Route path="/login" element={<LoginGuard><Login /></LoginGuard>} />
+          {/* /store — customer portal; completely independent of staff auth */}
           <Route path="/store/*" element={<CustomerPortalWrapper />} />
           <Route path="/" element={<Guard><Layout /></Guard>}>
             <Route index element={<Dashboard />} />

@@ -31,8 +31,17 @@ async function fetchWithRetry(url, options, retries = 2) {
 
 export default function Login() {
   const navigate = useNavigate();
-  // FIX: useStore exports setAuth (not setUser). Destructure correctly.
-  const { setAuth } = useStore();
+  const { setAuth, user } = useStore();
+
+  // ── If staff is already logged in, redirect to dashboard immediately ──────
+  // This prevents logged-in staff from seeing the login page and also
+  // ensures the "Customer Portal" button never gets intercepted by React Router
+  useEffect(() => {
+    if (user) {
+      // Already authenticated as staff — go to dashboard
+      window.location.replace('/');
+    }
+  }, [user]);
 
   const [phase,          setPhase]          = useState("credentials");
   const [username,       setUsername]       = useState("");
@@ -513,7 +522,7 @@ export default function Login() {
                 </button>
               </form>
 
-              <button className="vv-portal-link" onClick={() => navigate("/store")}>
+              <button className="vv-portal-link" onClick={() => { window.location.href = "/store"; }}>
                 <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.6" style={{opacity:0.4}}><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                 Customer? Visit the Online Store
                 <span className="vv-portal-arrow">→</span>
