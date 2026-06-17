@@ -69,6 +69,7 @@ const useToast = () => useContext(ToastCtx);
       .vd{position:fixed;top:0;right:0;bottom:0;width:min(440px,95vw);background:var(--bgs);backdrop-filter:blur(32px) saturate(200%);-webkit-backdrop-filter:blur(32px) saturate(200%);border-left:1px solid var(--br);z-index:2000;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,.3)}
       .mb{position:fixed;inset:0;background:var(--ov);backdrop-filter:blur(8px);z-index:1800;display:flex;align-items:center;justify-content:center;padding:20px}
       .vm{background:var(--bgs);backdrop-filter:blur(32px);border:1px solid var(--br);border-radius:var(--rxl);width:100%;max-width:900px;max-height:90vh;overflow-y:auto;box-shadow:var(--sl)}
+      @keyframes spin{to{transform:rotate(360deg)}}
       @keyframes sh{0%{background-position:-400px 0}100%{background-position:400px 0}}
       .sk{background:linear-gradient(90deg,var(--s1) 25%,var(--s2) 50%,var(--s1) 75%);background-size:400px 100%;animation:sh 1.6s ease-in-out infinite;border-radius:8px}
       .gd{height:1px;background:linear-gradient(to right,transparent,var(--gold),transparent)}
@@ -478,7 +479,7 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart}) => {
                   style={{padding:"13px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:10}}>
                   <IC n="cart" sz={15}/> Add to Cart — UGX {(Number(p.price)*qty).toLocaleString()}
                 </motion.button>
-                <a href={`https://wa.me/256000000000?text=Hi! I am interested in ${encodeURIComponent(p.name)}`} target="_blank" rel="noopener noreferrer"
+                <a href={`https://wa.me/256726983483?text=Hi! I am interested in ${encodeURIComponent(p.name)} — UGX ${Number(p.price).toLocaleString()}`} target="_blank" rel="noopener noreferrer"
                   style={{padding:"11px",background:"#25D366",color:"#fff",borderRadius:50,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600}}>
                   <IC n="wa" sz={14} c="#fff"/> Order via WhatsApp
                 </a>
@@ -491,8 +492,15 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart}) => {
   );
 };
 
-const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove}) => {
+// ── WhatsApp cart share helper ───────────────────────────────────────────────
+const buildWhatsAppCartMsg = (cart,total) => {
+  const lines = cart.map(i=>`• ${i.name}${i.selectedSize?` (${i.selectedSize})`:""} x${i.qty} — UGX ${(Number(i.price)*i.qty).toLocaleString()}`).join("\n");
+  return encodeURIComponent(`Hello Villa Vogue! 🛍️\n\nI'd like to place an order:\n\n${lines}\n\n*Total: UGX ${total.toLocaleString()}*\n\nPlease confirm availability and payment details. Thank you!`);
+};
+
+const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove,onCheckout}) => {
   const total=cart.reduce((a,i)=>a+Number(i.price)*i.qty,0);
+  const waMsg=buildWhatsAppCartMsg(cart,total);
   return (
     <AnimatePresence>
       {open&&(
@@ -511,15 +519,14 @@ const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove}) => {
                   <div style={{fontSize:44,marginBottom:14,opacity:.3}}>🛍</div>
                   <p style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:300,marginBottom:7}}>Your cart is empty</p>
                   <p style={{color:"var(--tm)",fontSize:13}}>Discover our luxury collections</p>
-                  <a href="/store" onClick={onClose} style={{display:"inline-block",marginTop:22}}>
-                    <button className="bg" style={{padding:"11px 26px",fontSize:13}}>Shop Now</button>
-                  </a>
+                  <button className="bg" onClick={onClose} style={{marginTop:22,padding:"11px 26px",fontSize:13}}>Shop Now</button>
                 </div>
               ):cart.map(item=>(
                 <motion.div key={`${item.id}-${item.selectedSize||""}`} layout exit={{opacity:0,x:40}}
                   style={{display:"flex",gap:12,padding:13,background:"var(--bc)",border:"1px solid var(--br)",borderRadius:15,marginBottom:12}}>
                   <div style={{width:64,height:64,borderRadius:10,overflow:"hidden",background:"var(--bt)",flexShrink:0}}>
-                    {item.image_url&&<img src={item.image_url} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+                    {item.image_url?<img src={item.image_url} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      :<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--fd)",fontSize:18,opacity:.2}}>VV</div>}
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <p style={{fontSize:13,fontWeight:500,marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</p>
@@ -539,18 +546,25 @@ const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove}) => {
             </div>
             {cart.length>0&&(
               <div style={{padding:"20px 22px",borderTop:"1px solid var(--br)",position:"sticky",bottom:0,background:"inherit"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                  <span style={{fontSize:13,color:"var(--ts)"}}>Subtotal</span>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                  <span style={{fontSize:13,color:"var(--ts)"}}>Subtotal ({cart.reduce((a,i)=>a+i.qty,0)} items)</span>
                   <span style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:500,color:"var(--gold)"}}>UGX {total.toLocaleString()}</span>
                 </div>
-                <a href="/checkout" style={{display:"block",textDecoration:"none"}}>
-                  <button className="bg" style={{width:"100%",padding:"14px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                    <IC n="lock" sz={14}/> Secure Checkout
-                  </button>
+                {/* Primary: Online Checkout */}
+                <motion.button className="bg" onClick={()=>{onClose();onCheckout();}} whileTap={{scale:.97}}
+                  style={{width:"100%",padding:"14px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:10}}>
+                  <IC n="lock" sz={14}/> Place Order Online
+                </motion.button>
+                {/* Secondary: WhatsApp order */}
+                <a href={`https://wa.me/256726983483?text=${waMsg}`} target="_blank" rel="noopener noreferrer" style={{display:"block",textDecoration:"none",marginBottom:12}}>
+                  <motion.button whileTap={{scale:.97}}
+                    style={{width:"100%",padding:"12px",fontSize:13,background:"#25D366",color:"#fff",border:"none",borderRadius:50,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,fontWeight:600}}>
+                    <IC n="wa" sz={15} c="#fff"/> Order via WhatsApp
+                  </motion.button>
                 </a>
-                <div style={{display:"flex",justifyContent:"center",gap:16,marginTop:12}}>
+                <div style={{display:"flex",justifyContent:"center",gap:16}}>
                   {["MTN MoMo","Airtel Money","Card"].map(m=>(
-                    <span key={m} style={{fontSize:11,color:"var(--tm)",display:"flex",alignItems:"center",gap:3}}>
+                    <span key={m} style={{fontSize:10,color:"var(--tm)",display:"flex",alignItems:"center",gap:3}}>
                       <IC n="shield" sz={10} c="var(--gold)"/> {m}
                     </span>
                   ))}
@@ -564,7 +578,292 @@ const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove}) => {
   );
 };
 
-const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
+// ── Checkout Modal — places real order to backend ────────────────────────────
+const BASE_API = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
+
+const STEPS = ["Cart Review","Your Details","Payment","Confirm"];
+
+const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemove}) => {
+  const toast = useToast();
+  const [step,setStep] = useState(0);
+  const [loading,setLoading] = useState(false);
+  const [orderRef,setOrderRef] = useState(null);
+  const [form,setForm] = useState({
+    name: user?.name||user?.fullName||"",
+    email: user?.email||"",
+    phone: user?.phone||"",
+    address: "",
+    delivery: "pickup",   // pickup | delivery
+    payment: "cash",      // cash | mtn_momo | airtel_money | card
+    notes: "",
+    momoNumber: "",
+  });
+
+  const total = cart.reduce((a,i)=>a+Number(i.price)*i.qty,0);
+  const deliveryFee = form.delivery==="delivery" ? 10000 : 0;
+  const grandTotal = total + deliveryFee;
+  const waMsg = buildWhatsAppCartMsg(cart, grandTotal);
+
+  // Reset when closed
+  useEffect(()=>{ if(!open){setStep(0);setOrderRef(null);setLoading(false);} },[open]);
+  // Pre-fill when user logs in
+  useEffect(()=>{ if(user) setForm(f=>({...f,name:user.name||user.fullName||f.name,email:user.email||f.email,phone:user.phone||f.phone})); },[user]);
+
+  const placeOrder = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem("vv_portal_token");
+      const payload = {
+        source: "online",
+        customerId: user?.id || null,
+        customerName: form.name,
+        customerEmail: form.email,
+        customerPhone: form.phone,
+        deliveryAddress: form.delivery==="delivery" ? form.address : "In-Store Pickup",
+        deliveryType: form.delivery,
+        paymentMethod: form.payment,
+        momoNumber: form.momoNumber || undefined,
+        notes: form.notes,
+        deliveryFee,
+        items: cart.map(i=>({
+          productId: i.id,
+          name: i.name,
+          quantity: i.qty,
+          price: Number(i.price),
+          selectedSize: i.selectedSize||null,
+          selectedColor: i.selectedColor||null,
+        })),
+        total: grandTotal,
+      };
+      const res = await fetch(`${BASE_API}/orders`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json", ...(token?{Authorization:`Bearer ${token}`}:{})},
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error||"Order failed");
+      const ref = data.order?.orderNumber || data.orderNumber || data.id || `VV-${Date.now()}`;
+      setOrderRef(ref);
+      setStep(3);
+      onOrderPlaced?.(data.order||data);
+    } catch(e) {
+      toast(e.message||"Could not place order. Try WhatsApp instead.","err","⚠");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if(!open) return null;
+
+  const inp = (label,field,type="text",placeholder="",required=false) => (
+    <div>
+      <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>{label}{required&&<span style={{color:"var(--gold)"}}> *</span>}</label>
+      <input className="vi" type={type} value={form[field]} onChange={e=>setForm(f=>({...f,[field]:e.target.value}))}
+        placeholder={placeholder} style={{width:"100%",padding:"11px 13px",fontSize:13}}/>
+    </div>
+  );
+
+  return (
+    <AnimatePresence>
+      {open&&(
+        <motion.div className="mb" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+          onClick={e=>e.target===e.currentTarget&&onClose()} style={{zIndex:2500,alignItems:"flex-start",paddingTop:20}}>
+          <motion.div initial={{opacity:0,y:30,scale:.96}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:20,scale:.97}}
+            style={{background:"var(--bgs)",border:"1px solid var(--br)",borderRadius:"var(--rxl)",width:"100%",maxWidth:560,maxHeight:"92vh",overflowY:"auto",boxShadow:"var(--sl)"}}>
+
+            {/* Header */}
+            <div style={{padding:"20px 24px 16px",borderBottom:"1px solid var(--br)",position:"sticky",top:0,background:"var(--bgs)",zIndex:1}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div><p className="ll">Villa Vogue</p><h2 style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:300,marginTop:2}}>
+                  {step===3 ? "Order Confirmed! 🎉" : "Complete Your Order"}
+                </h2></div>
+                <button onClick={onClose} style={{background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:8,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={15}/></button>
+              </div>
+              {/* Progress bar */}
+              {step<3&&(
+                <div style={{display:"flex",gap:6}}>
+                  {STEPS.slice(0,3).map((s,i)=>(
+                    <div key={s} style={{flex:1}}>
+                      <div style={{height:3,borderRadius:10,background:i<=step?"var(--gold)":"var(--br)",transition:"background .4s"}}/>
+                      <p style={{fontSize:10,color:i<=step?"var(--gold)":"var(--tm)",marginTop:5,fontWeight:600}}>{s}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{padding:"20px 24px"}}>
+
+              {/* ── Step 0: Cart Review ── */}
+              {step===0&&(
+                <div>
+                  <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+                    {cart.map(item=>(
+                      <div key={`${item.id}-${item.selectedSize||""}`} style={{display:"flex",gap:10,padding:12,background:"var(--bc)",border:"1px solid var(--br)",borderRadius:12}}>
+                        <div style={{width:52,height:52,borderRadius:8,overflow:"hidden",background:"var(--bt)",flexShrink:0}}>
+                          {item.image_url?<img src={item.image_url} alt={item.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            :<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"var(--fd)",opacity:.2}}>VV</div>}
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <p style={{fontSize:13,fontWeight:500,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</p>
+                          {item.selectedSize&&<p style={{fontSize:11,color:"var(--tm)",marginBottom:4}}>Size: {item.selectedSize}</p>}
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <button onClick={()=>onUpdateQty(item.id,item.qty-1)} style={{width:22,height:22,borderRadius:5,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="minus" sz={9}/></button>
+                            <span style={{fontSize:12,fontWeight:600,width:18,textAlign:"center"}}>{item.qty}</span>
+                            <button onClick={()=>onUpdateQty(item.id,item.qty+1)} style={{width:22,height:22,borderRadius:5,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="plus" sz={9}/></button>
+                          </div>
+                        </div>
+                        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",justifyContent:"space-between"}}>
+                          <button onClick={()=>onRemove(item.id)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--tm)"}}><IC n="trash" sz={13}/></button>
+                          <span style={{fontSize:13,fontWeight:700,color:"var(--gold)"}}>UGX {(Number(item.price)*item.qty).toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{background:"var(--bc)",border:"1px solid var(--br)",borderRadius:12,padding:"14px 16px",marginBottom:20}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><span style={{fontSize:13,color:"var(--ts)"}}>Subtotal</span><span style={{fontSize:13,fontWeight:600}}>UGX {total.toLocaleString()}</span></div>
+                    <div style={{display:"flex",justifyContent:"space-between",paddingTop:8,borderTop:"1px solid var(--br)"}}><span style={{fontWeight:700}}>Total</span><span style={{fontFamily:"var(--fd)",fontSize:18,color:"var(--gold)",fontWeight:500}}>UGX {total.toLocaleString()}</span></div>
+                  </div>
+                  <motion.button className="bg" onClick={()=>setStep(1)} whileTap={{scale:.97}} disabled={cart.length===0}
+                    style={{width:"100%",padding:"13px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:cart.length===0?.5:1}}>
+                    Continue to Details <IC n="cr" sz={14}/>
+                  </motion.button>
+                </div>
+              )}
+
+              {/* ── Step 1: Customer Details ── */}
+              {step===1&&(
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  {inp("Full Name","name","text","Jane Nakato",true)}
+                  {inp("Phone Number","phone","tel","+256 7XX XXX XXX",true)}
+                  {inp("Email Address","email","email","jane@example.com")}
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:8}}>Delivery Option <span style={{color:"var(--gold)"}}>*</span></label>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                      {[{v:"pickup",l:"🏪 In-Store Pickup",d:"Free · Ready in 1hr"},{v:"delivery",l:"🚚 Home Delivery",d:"UGX 10,000 · 1-2 days"}].map(opt=>(
+                        <button key={opt.v} onClick={()=>setForm(f=>({...f,delivery:opt.v}))}
+                          style={{padding:"12px",borderRadius:12,background:form.delivery===opt.v?"rgba(201,168,76,.12)":"var(--ib)",border:`2px solid ${form.delivery===opt.v?"var(--gold)":"var(--br)"}`,cursor:"pointer",textAlign:"left",transition:"all .2s"}}>
+                          <p style={{fontSize:13,fontWeight:600,color:"var(--tp)",marginBottom:3}}>{opt.l}</p>
+                          <p style={{fontSize:11,color:"var(--tm)"}}>{opt.d}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {form.delivery==="delivery"&&inp("Delivery Address","address","text","Kampala, Uganda",true)}
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>Order Notes</label>
+                    <textarea className="vi" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}
+                      placeholder="Any special requests or instructions…" rows={2}
+                      style={{width:"100%",padding:"11px 13px",fontSize:13,resize:"vertical"}}/>
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <button className="bgh" onClick={()=>setStep(0)} style={{flex:1,padding:"12px",fontSize:13}}>← Back</button>
+                    <motion.button className="bg" onClick={()=>{
+                      if(!form.name||!form.phone||(form.delivery==="delivery"&&!form.address)){toast("Please fill required fields","err","⚠");return;}
+                      setStep(2);
+                    }} whileTap={{scale:.97}} style={{flex:2,padding:"12px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                      Continue to Payment <IC n="cr" sz={14}/>
+                    </motion.button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Step 2: Payment ── */}
+              {step===2&&(
+                <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:10}}>Payment Method</label>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {[
+                        {v:"cash",l:"💵 Cash on Pickup/Delivery",d:"Pay when you receive your order"},
+                        {v:"mtn_momo",l:"📱 MTN Mobile Money",d:"Send to our MoMo number"},
+                        {v:"airtel_money",l:"📱 Airtel Money",d:"Send to our Airtel number"},
+                        {v:"card",l:"💳 Card Payment",d:"Visa / Mastercard"},
+                      ].map(opt=>(
+                        <button key={opt.v} onClick={()=>setForm(f=>({...f,payment:opt.v}))}
+                          style={{padding:"13px 16px",borderRadius:12,background:form.payment===opt.v?"rgba(201,168,76,.12)":"var(--ib)",border:`2px solid ${form.payment===opt.v?"var(--gold)":"var(--br)"}`,cursor:"pointer",textAlign:"left",transition:"all .2s",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <div><p style={{fontSize:13,fontWeight:600,color:"var(--tp)",marginBottom:2}}>{opt.l}</p><p style={{fontSize:11,color:"var(--tm)"}}>{opt.d}</p></div>
+                          {form.payment===opt.v&&<IC n="check" sz={16} c="var(--gold)"/>}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {(form.payment==="mtn_momo"||form.payment==="airtel_money")&&(
+                    <div style={{background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.3)",borderRadius:12,padding:"14px 16px"}}>
+                      <p style={{fontSize:12,color:"var(--gold)",fontWeight:600,marginBottom:6}}>📲 Payment Instructions</p>
+                      <p style={{fontSize:12,color:"var(--ts)",lineHeight:1.7}}>
+                        {form.payment==="mtn_momo"
+                          ? "Send UGX "+grandTotal.toLocaleString()+" to MTN MoMo: 0726983483 (Villa Vogue)"
+                          : "Send UGX "+grandTotal.toLocaleString()+" to Airtel: 0726983483 (Villa Vogue)"}
+                        <br/>Use your name + order number as reference after placing.
+                      </p>
+                      {inp("Your MoMo/Airtel Number","momoNumber","tel","07XX XXX XXX")}
+                    </div>
+                  )}
+                  {/* Order summary */}
+                  <div style={{background:"var(--bc)",border:"1px solid var(--br)",borderRadius:12,padding:"14px 16px"}}>
+                    <p style={{fontSize:11,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",marginBottom:10}}>Order Summary</p>
+                    {cart.map(i=><div key={i.id} style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--ts)"}}>{i.name} x{i.qty}</span><span style={{fontWeight:600}}>UGX {(Number(i.price)*i.qty).toLocaleString()}</span></div>)}
+                    {deliveryFee>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--ts)"}}>Delivery</span><span>UGX {deliveryFee.toLocaleString()}</span></div>}
+                    <div style={{display:"flex",justifyContent:"space-between",paddingTop:10,borderTop:"1px solid var(--br)"}}><span style={{fontWeight:700}}>Total</span><span style={{fontFamily:"var(--fd)",fontSize:17,color:"var(--gold)",fontWeight:500}}>UGX {grandTotal.toLocaleString()}</span></div>
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <button className="bgh" onClick={()=>setStep(1)} style={{flex:1,padding:"12px",fontSize:13}}>← Back</button>
+                    <motion.button className="bg" onClick={placeOrder} disabled={loading} whileTap={{scale:.97}}
+                      style={{flex:2,padding:"13px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:loading?.7:1}}>
+                      {loading?<><span style={{width:14,height:14,border:"2px solid rgba(0,0,0,.3)",borderTopColor:"#000",borderRadius:"50%",display:"inline-block",animation:"spin 1s linear infinite"}}/> Placing Order…</>
+                        :<><IC n="check" sz={14}/> Place Order — UGX {grandTotal.toLocaleString()}</>}
+                    </motion.button>
+                  </div>
+                  {/* WhatsApp fallback */}
+                  <div style={{textAlign:"center"}}>
+                    <p style={{fontSize:11,color:"var(--tm)",marginBottom:8}}>Prefer WhatsApp?</p>
+                    <a href={`https://wa.me/256726983483?text=${waMsg}`} target="_blank" rel="noopener noreferrer"
+                      style={{display:"inline-flex",alignItems:"center",gap:6,color:"#25D366",fontSize:12,fontWeight:600,textDecoration:"none"}}>
+                      <IC n="wa" sz={13} c="#25D366"/> Send order via WhatsApp instead
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Step 3: Confirmation ── */}
+              {step===3&&(
+                <div style={{textAlign:"center",padding:"10px 0 20px"}}>
+                  <motion.div initial={{scale:0}} animate={{scale:1}} transition={{type:"spring",delay:.1}}
+                    style={{width:72,height:72,borderRadius:"50%",background:"linear-gradient(135deg,var(--gold-d),var(--gold))",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+                    <IC n="check" sz={32} c="#000"/>
+                  </motion.div>
+                  <h3 style={{fontFamily:"var(--fd)",fontSize:26,fontWeight:300,marginBottom:8}}>Order Placed!</h3>
+                  <p style={{color:"var(--ts)",fontSize:14,marginBottom:4}}>Your order reference is:</p>
+                  <div style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--gold)",fontWeight:500,marginBottom:20,letterSpacing:".06em"}}>{orderRef}</div>
+                  <div style={{background:"var(--bc)",border:"1px solid var(--br)",borderRadius:14,padding:"16px",marginBottom:20,textAlign:"left"}}>
+                    <p style={{fontSize:12,fontWeight:700,letterSpacing:".06em",textTransform:"uppercase",color:"var(--tm)",marginBottom:10}}>What happens next</p>
+                    {[
+                      {e:"📞",t:"We'll call/WhatsApp you within 30 minutes to confirm"},
+                      {e:"💳",t:form.payment!=="cash"?"Complete your MoMo/Airtel payment using the reference above":"Have cash ready for "+( form.delivery==="delivery"?"delivery":"pickup")},
+                      {e:form.delivery==="delivery"?"🚚":"🏪",t:form.delivery==="delivery"?"We'll deliver to "+form.address+" within 1-2 days":"Your order will be ready for pickup in about 1 hour"},
+                    ].map((s,i)=>(
+                      <div key={i} style={{display:"flex",gap:10,marginBottom:10}}>
+                        <span style={{fontSize:18,flexShrink:0}}>{s.e}</span>
+                        <p style={{fontSize:13,color:"var(--ts)",lineHeight:1.6}}>{s.t}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <a href={`https://wa.me/256726983483?text=${encodeURIComponent(`Hi Villa Vogue! My order reference is ${orderRef}. I'd like to confirm my order.`)}`}
+                    target="_blank" rel="noopener noreferrer"
+                    style={{display:"flex",alignItems:"center",justifyContent:"center",gap:7,background:"#25D366",color:"#fff",padding:"12px",borderRadius:50,textDecoration:"none",fontWeight:600,fontSize:13,marginBottom:12}}>
+                    <IC n="wa" sz={15} c="#fff"/> Confirm on WhatsApp
+                  </a>
+                  <button className="bgh" onClick={onClose} style={{width:"100%",padding:"11px",fontSize:13}}>Continue Shopping</button>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
   const toast=useToast();
   return (
     <AnimatePresence>
@@ -1103,7 +1402,7 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
 };
 
 const WhatsAppFloat = () => (
-  <motion.a href="https://wa.me/256000000000?text=Hello! I need help with Villa Vogue."
+  <motion.a href="https://wa.me/256726983483?text=Hello! I need help with a Villa Vogue order."
     target="_blank" rel="noopener noreferrer" className="wf"
     initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}}
     transition={{delay:2,type:"spring"}} whileHover={{scale:1.12}}
@@ -1129,6 +1428,7 @@ const PortalShell = ({
   const [staffMode,setStaffMode]=useState(false);
   const [acctOpen,setAcctOpen]=useState(false);
   const [qvProd,setQvProd]=useState(null);
+  const [checkoutOpen,setCheckoutOpen]=useState(false);
 
   useEffect(()=>{localStorage.setItem("vv_cart",JSON.stringify(cart));},[cart]);
   useEffect(()=>{localStorage.setItem("vv_wishlist",JSON.stringify(wl));},[wl]);
@@ -1176,11 +1476,13 @@ const PortalShell = ({
       </main>
       <Footer/>
       <AnimatePresence>{srchOpen&&<SearchOverlay open={srchOpen} onClose={()=>setSrchOpen(false)} products={products}/>}</AnimatePresence>
-      <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart}/>
+      <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart} onCheckout={()=>setCheckoutOpen(true)}/>
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
       <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout}/>
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}/>
       <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} isStaffMode={staffMode}/>
+      <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
+        onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
       <WhatsAppFloat/>
     </div>
   );
