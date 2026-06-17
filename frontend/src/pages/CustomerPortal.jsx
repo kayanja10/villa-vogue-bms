@@ -432,14 +432,32 @@ const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlis
   );
 };
 
-const QuickViewModal = ({product:p,open,onClose,onAddToCart}) => {
+const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
   const toast=useToast();
   const [qty,setQty]=useState(1);
   const [size,setSize]=useState("");
   const [color,setColor]=useState("");
+  const [ordering,setOrdering]=useState(false);
   const szs=["XS","S","M","L","XL","XXL"];
   const cls=["#1A1A1A","#F5F0E8","#8B5E3C","#C9A84C","#3A3A6A","#8B3A3A"];
   if(!p)return null;
+
+  const waText = encodeURIComponent(
+    `Hello Villa Vogue! 🛍️\n\nI'd like to order:\n• ${p.name}${size?` (Size: ${size})`:""}${color?` (Color: ${color})`:""}  x${qty} — UGX ${(Number(p.price)*qty).toLocaleString()}\n\n*Total: UGX ${(Number(p.price)*qty).toLocaleString()}*\n\nPlease confirm availability. Thank you!`
+  );
+
+  // Place a direct single-product online order without going through the cart
+  const handleOrderOnline = async () => {
+    setOrdering(true);
+    try {
+      onClose();
+      // Pass product directly to checkout modal pre-filled
+      onOrderOnline?.({...p, qty, selectedSize:size, selectedColor:color});
+    } finally {
+      setOrdering(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       {open&&(
@@ -451,38 +469,57 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart}) => {
                   :<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"var(--fd)",fontSize:48,opacity:.2}}>VV</span></div>}
                 {p.is_new&&<span className="lb" style={{position:"absolute",top:14,left:14}}>New Arrival</span>}
               </div>
-              <div style={{padding:"28px 24px",display:"flex",flexDirection:"column",position:"relative"}}>
+              <div style={{padding:"28px 24px",display:"flex",flexDirection:"column",position:"relative",overflowY:"auto"}}>
                 <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={15}/></button>
                 <p className="ll" style={{marginBottom:5}}>{p.category}</p>
-                <h2 style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:400,lineHeight:1.2,marginBottom:10}}>{p.name}</h2>
-                <Stars r={p.rating||4.2} count={p.review_count||0} sz={15}/>
-                <div style={{margin:"12px 0"}}><span style={{fontFamily:"var(--fd)",fontSize:26,fontWeight:500,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span></div>
-                <p style={{fontSize:13,color:"var(--ts)",lineHeight:1.75,marginBottom:16}}>{p.description||"Premium quality fashion piece crafted with meticulous attention to detail. A timeless addition to your wardrobe."}</p>
+                <h2 style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400,lineHeight:1.2,marginBottom:8}}>{p.name}</h2>
+                <Stars r={p.rating||4.2} count={p.review_count||0} sz={14}/>
+                <div style={{margin:"10px 0"}}><span style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:500,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span></div>
+                <p style={{fontSize:12,color:"var(--ts)",lineHeight:1.7,marginBottom:12}}>{p.description||"Premium quality fashion piece crafted with meticulous attention to detail. A timeless addition to your wardrobe."}</p>
+                <div style={{marginBottom:12}}>
+                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:7}}>Size</p>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {szs.map(s=><button key={s} onClick={()=>setSize(s)} style={{width:36,height:36,borderRadius:8,background:size===s?"var(--gold)":"var(--ib)",border:`1px solid ${size===s?"var(--gold)":"var(--br)"}`,color:size===s?"#000":"var(--tp)",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .2s"}}>{s}</button>)}
+                  </div>
+                </div>
                 <div style={{marginBottom:14}}>
-                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:8}}>Size</p>
-                  <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
-                    {szs.map(s=><button key={s} onClick={()=>setSize(s)} style={{width:38,height:38,borderRadius:8,background:size===s?"var(--gold)":"var(--ib)",border:`1px solid ${size===s?"var(--gold)":"var(--br)"}`,color:size===s?"#000":"var(--tp)",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .2s"}}>{s}</button>)}
+                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:7}}>Color</p>
+                  <div style={{display:"flex",gap:6}}>
+                    {cls.map(c=><button key={c} onClick={()=>setColor(c)} style={{width:24,height:24,borderRadius:"50%",background:c,border:"2px solid transparent",cursor:"pointer",outline:color===c?"2px solid var(--gold)":"none",outlineOffset:2,transition:"all .2s"}}/>)}
                   </div>
                 </div>
-                <div style={{marginBottom:16}}>
-                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:8}}>Color</p>
-                  <div style={{display:"flex",gap:7}}>
-                    {cls.map(c=><button key={c} onClick={()=>setColor(c)} style={{width:26,height:26,borderRadius:"50%",background:c,border:"2px solid transparent",cursor:"pointer",outline:color===c?"2px solid var(--gold)":"none",outlineOffset:2,transition:"all .2s"}}/>)}
-                  </div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                  <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{width:30,height:30,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="minus" sz={12}/></button>
+                  <span style={{fontSize:14,fontWeight:600,width:24,textAlign:"center"}}>{qty}</span>
+                  <button onClick={()=>setQty(q=>q+1)} style={{width:30,height:30,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="plus" sz={12}/></button>
+                  <span style={{fontSize:11,color:"var(--tm)",marginLeft:4}}>
+                    {p.stock_quantity>0?`${p.stock_quantity} in stock`:<span style={{color:"#e74c3c"}}>Out of stock</span>}
+                  </span>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
-                  <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{width:32,height:32,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="minus" sz={13}/></button>
-                  <span style={{fontSize:15,fontWeight:600,width:26,textAlign:"center"}}>{qty}</span>
-                  <button onClick={()=>setQty(q=>q+1)} style={{width:32,height:32,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="plus" sz={13}/></button>
-                </div>
-                <motion.button className="bg" onClick={()=>{onAddToCart({...p,qty,selectedSize:size,selectedColor:color});toast(`${p.name} added to cart ✦`);onClose();}} whileTap={{scale:.97}}
-                  style={{padding:"13px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:10}}>
-                  <IC n="cart" sz={15}/> Add to Cart — UGX {(Number(p.price)*qty).toLocaleString()}
+
+                {/* Add to Cart */}
+                <motion.button className="bgh" onClick={()=>{onAddToCart({...p,qty,selectedSize:size,selectedColor:color});toast(`${p.name} added to cart ✦`);onClose();}} whileTap={{scale:.97}}
+                  style={{padding:"11px",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:8}}>
+                  <IC n="cart" sz={13}/> Add to Cart
                 </motion.button>
-                <a href={`https://wa.me/256782860372?text=Hi! I am interested in ${encodeURIComponent(p.name)} — UGX ${Number(p.price).toLocaleString()}`} target="_blank" rel="noopener noreferrer"
-                  style={{padding:"11px",background:"#25D366",color:"#fff",borderRadius:50,textDecoration:"none",display:"flex",alignItems:"center",justifyContent:"center",gap:6,fontSize:13,fontWeight:600}}>
-                  <IC n="wa" sz={14} c="#fff"/> Order via WhatsApp
+
+                {/* ORDER ONLINE — goes directly to orders + notification */}
+                <motion.button className="bg" onClick={handleOrderOnline} disabled={ordering||p.stock_quantity===0} whileTap={{scale:.97}}
+                  style={{padding:"12px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:8,fontWeight:700,opacity:p.stock_quantity===0?.5:1}}>
+                  <IC n="lock" sz={14}/> Order Online — UGX {(Number(p.price)*qty).toLocaleString()}
+                </motion.button>
+
+                {/* ORDER VIA WHATSAPP */}
+                <a href={`https://wa.me/256782860372?text=${waText}`} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>
+                  <motion.button whileTap={{scale:.97}}
+                    style={{width:"100%",padding:"11px",background:"#25D366",color:"#fff",border:"none",borderRadius:50,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,fontSize:13,fontWeight:600}}>
+                    <IC n="wa" sz={14} c="#fff"/> Order via WhatsApp
+                  </motion.button>
                 </a>
+
+                <p style={{fontSize:10,color:"var(--tm)",textAlign:"center",marginTop:10}}>
+                  🔒 Online orders go directly to our system · WhatsApp for instant chat
+                </p>
               </div>
             </div>
           </motion.div>
@@ -612,7 +649,6 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
   const placeOrder = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("vv_portal_token");
       const payload = {
         source: "online",
         customerId: user?.id || null,
@@ -635,9 +671,10 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
         })),
         total: grandTotal,
       };
+      // No Authorization header — backend optionalAuth allows unauthenticated online orders
       const res = await fetch(`${BASE_API}/orders`, {
         method:"POST",
-        headers:{"Content-Type":"application/json", ...(token?{Authorization:`Bearer ${token}`}:{})},
+        headers:{"Content-Type":"application/json"},
         body: JSON.stringify(payload),
       });
       const data = await res.json();
@@ -914,51 +951,185 @@ const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
   );
 };
 
+// ── Hero slideshow images (real Villa Vogue products) ────────────────────────
+const HERO_SLIDES = [
+  {
+    img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&q=80",
+    label: "New Collection",
+    title: "Luxury Fashion\nfor the Modern\nLifestyle",
+    sub: "Discover curated collections blending timeless elegance with contemporary sophistication.",
+  },
+  {
+    img: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&q=80",
+    label: "Women's Wear",
+    title: "Elegance in\nEvery\nThread",
+    sub: "From casual chic to red-carpet ready — find your perfect look at Villa Vogue.",
+  },
+  {
+    img: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80",
+    label: "Men's Collection",
+    title: "Dress to\nImpress,\nEvery Day",
+    sub: "Sharp tailoring meets modern style. Look your best for every occasion.",
+  },
+  {
+    img: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&q=80",
+    label: "Trending Now",
+    title: "The Latest\nArrivals\nAre Here",
+    sub: "Fresh drops every week. Be the first to wear what everyone will be talking about.",
+  },
+];
+
 const HeroSection = ({onShopNow}) => {
-  const ref=useRef(null);
-  const {scrollYProgress}=useScroll({target:ref,offset:["start start","end start"]});
-  const y=useTransform(scrollYProgress,[0,1],[0,120]);
-  const op=useTransform(scrollYProgress,[0,.6],[1,0]);
+  const [current,setCurrent]=useState(0);
+  const [prev,setPrev]=useState(null);
+
+  useEffect(()=>{
+    const t=setInterval(()=>{
+      setPrev(current);
+      setCurrent(c=>(c+1)%HERO_SLIDES.length);
+    },4500);
+    return ()=>clearInterval(t);
+  },[current]);
+
+  const slide=HERO_SLIDES[current];
+  const prevSlide=prev!==null?HERO_SLIDES[prev]:null;
+
   return (
-    <div ref={ref} className="hs" style={{paddingTop:68}}>
-      <motion.div style={{position:"absolute",top:"15%",right:"8%",width:320,height:320,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,168,76,.1) 0%,transparent 70%)",filter:"blur(40px)",pointerEvents:"none"}}
-        animate={{scale:[1,1.1,1],opacity:[.6,1,.6]}} transition={{duration:6,repeat:Infinity,ease:"easeInOut"}}/>
-      <motion.div style={{position:"absolute",bottom:"25%",left:"5%",width:200,height:200,borderRadius:"50%",background:"radial-gradient(circle,rgba(201,168,76,.07) 0%,transparent 70%)",filter:"blur(40px)",pointerEvents:"none"}}
-        animate={{scale:[1,1.15,1]}} transition={{duration:8,repeat:Infinity,ease:"easeInOut",delay:2}}/>
-      <motion.div style={{y,opacity:op,maxWidth:1400,margin:"0 auto",padding:"0 24px",width:"100%",position:"relative",zIndex:2}}>
-        <div style={{maxWidth:570}}>
-          <motion.span className="ll" initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.6,delay:.1}} style={{marginBottom:18,display:"block"}}>✦ New Arrivals 2025</motion.span>
-          <motion.h1 initial={{opacity:0,y:30}} animate={{opacity:1,y:0}} transition={{duration:.9,delay:.2}}
-            style={{fontFamily:"var(--fd)",fontSize:"clamp(42px,7vw,86px)",fontWeight:300,lineHeight:1.06,color:"var(--tp)",marginBottom:20}}>
-            Luxury Fashion<br/><em style={{fontStyle:"italic",color:"var(--gold)"}}>for the Modern</em><br/>Lifestyle
-          </motion.h1>
-          <motion.p initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{duration:.7,delay:.4}}
-            style={{fontSize:16,color:"var(--ts)",lineHeight:1.8,marginBottom:32,maxWidth:440}}>
-            Discover curated collections blending timeless elegance with contemporary sophistication. Crafted for the discerning Ugandan fashion connoisseur.
-          </motion.p>
-          <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} transition={{delay:.55}} style={{display:"flex",gap:14,flexWrap:"wrap"}}>
-            <motion.button className="bg" onClick={onShopNow} whileHover={{scale:1.03}} whileTap={{scale:.97}} style={{padding:"15px 32px",fontSize:13,letterSpacing:".06em"}}>Shop Collection</motion.button>
-            <a href="/store?collection=trending"><motion.button className="bgh" whileHover={{scale:1.03}} whileTap={{scale:.97}} style={{padding:"15px 32px",fontSize:13,letterSpacing:".06em"}}>Explore Trends</motion.button></a>
+    <div style={{position:"relative",height:"100vh",minHeight:520,overflow:"hidden",background:"#0a0a0a"}}>
+      {/* Slide images */}
+      <AnimatePresence>
+        {prevSlide&&(
+          <motion.div key={`prev-${prev}`} initial={{opacity:1}} animate={{opacity:0}} exit={{opacity:0}} transition={{duration:.9}}
+            style={{position:"absolute",inset:0,zIndex:1}}>
+            <img src={prevSlide.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.55,filter:"brightness(.7)"}}/>
           </motion.div>
-          <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:.8}}
-            style={{display:"flex",gap:32,marginTop:48,paddingTop:32,borderTop:"1px solid var(--br)"}}>
-            {[{n:"10K+",l:"Happy Customers"},{n:"500+",l:"Luxury Items"},{n:"4.9★",l:"Average Rating"}].map(s=>(
+        )}
+      </AnimatePresence>
+      <motion.div key={`curr-${current}`} initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} transition={{duration:1.1,ease:"easeOut"}}
+        style={{position:"absolute",inset:0,zIndex:2}}>
+        <img src={slide.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.55,filter:"brightness(.7)"}}/>
+      </motion.div>
+      {/* Dark gradient overlay */}
+      <div style={{position:"absolute",inset:0,zIndex:3,background:"linear-gradient(to right, rgba(0,0,0,.75) 40%, rgba(0,0,0,.2) 100%)"}}/>
+
+      {/* Content */}
+      <div style={{position:"absolute",inset:0,zIndex:4,display:"flex",alignItems:"center",padding:"0 6vw",paddingTop:80}}>
+        <div style={{maxWidth:580}}>
+          <AnimatePresence mode="wait">
+            <motion.div key={current} initial={{opacity:0,y:28}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}} transition={{duration:.6}}>
+              <span style={{fontSize:11,letterSpacing:".2em",textTransform:"uppercase",color:"var(--gold)",fontWeight:600,display:"block",marginBottom:16}}>
+                ✦ {slide.label}
+              </span>
+              <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(38px,6.5vw,80px)",fontWeight:300,lineHeight:1.08,color:"#fff",marginBottom:20,whiteSpace:"pre-line"}}>
+                {slide.title.split('\n').map((line,i)=>
+                  i===1?<span key={i} style={{fontStyle:"italic",color:"var(--gold)"}}>{line}<br/></span>:<span key={i}>{line}<br/></span>
+                )}
+              </h1>
+              <p style={{fontSize:15,color:"rgba(255,255,255,.75)",lineHeight:1.8,marginBottom:32,maxWidth:420}}>{slide.sub}</p>
+            </motion.div>
+          </AnimatePresence>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            <motion.button className="bg" onClick={onShopNow} whileHover={{scale:1.04}} whileTap={{scale:.97}}
+              style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em"}}>Shop Collection</motion.button>
+            <motion.button className="bgh" onClick={onShopNow} whileHover={{scale:1.04}} whileTap={{scale:.97}}
+              style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em",color:"#fff",borderColor:"rgba(255,255,255,.35)"}}>View All</motion.button>
+          </div>
+          {/* Stats */}
+          <div style={{display:"flex",gap:28,marginTop:44,paddingTop:28,borderTop:"1px solid rgba(255,255,255,.15)"}}>
+            {[{n:"500+",l:"Products"},{n:"10K+",l:"Customers"},{n:"4.9★",l:"Rating"}].map(s=>(
               <div key={s.n}>
-                <div style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:300,color:"var(--gold)"}}>{s.n}</div>
-                <div style={{fontSize:11,color:"var(--tm)",letterSpacing:".06em",textTransform:"uppercase",marginTop:3}}>{s.l}</div>
+                <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:300,color:"var(--gold)"}}>{s.n}</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,.55)",letterSpacing:".08em",textTransform:"uppercase",marginTop:3}}>{s.l}</div>
               </div>
             ))}
-          </motion.div>
+          </div>
         </div>
-      </motion.div>
-      <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:1.2}}
-        style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:7}}>
-        <span style={{fontSize:9,letterSpacing:".2em",textTransform:"uppercase",color:"var(--tm)"}}>Scroll</span>
-        <motion.div style={{width:1,height:36,background:"var(--brg)"}} animate={{scaleY:[0,1,0]}} transition={{duration:1.8,repeat:Infinity}}/>
-      </motion.div>
+      </div>
+
+      {/* Slide dots */}
+      <div style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:5,display:"flex",gap:8}}>
+        {HERO_SLIDES.map((_,i)=>(
+          <button key={i} onClick={()=>{setPrev(current);setCurrent(i);}}
+            style={{width:i===current?24:7,height:7,borderRadius:10,background:i===current?"var(--gold)":"rgba(255,255,255,.35)",border:"none",cursor:"pointer",transition:"all .4s",padding:0}}/>
+        ))}
+      </div>
+
+      {/* Scroll hint */}
+      <div style={{position:"absolute",bottom:28,right:32,zIndex:5,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+        <span style={{fontSize:9,letterSpacing:".2em",textTransform:"uppercase",color:"rgba(255,255,255,.4)"}}>Scroll</span>
+        <motion.div style={{width:1,height:32,background:"rgba(255,255,255,.3)"}} animate={{scaleY:[0,1,0]}} transition={{duration:1.8,repeat:Infinity}}/>
+      </div>
     </div>
   );
 };
+
+// ── About / Founder Section ──────────────────────────────────────────────────
+const AboutSection = () => (
+  <section style={{padding:"80px 0",background:"var(--bp)"}}>
+    <div style={{maxWidth:1100,margin:"0 auto",padding:"0 24px"}}>
+      <Reveal>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:56,alignItems:"center",flexWrap:"wrap"}}>
+          {/* Founder photo */}
+          <div style={{position:"relative"}}>
+            <div style={{borderRadius:24,overflow:"hidden",aspectRatio:"3/4",background:"var(--bt)",maxHeight:520}}>
+              <img
+                src="https://i.postimg.cc/ZWrF3t86/me-now.jpg"
+                onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
+                alt="Kayanja Wilfred — Founder, Villa Vogue"
+                style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}
+              />
+              {/* Fallback initials */}
+              <div style={{display:"none",width:"100%",height:"100%",background:"linear-gradient(135deg,#1a1a1a,#2d2d2d)",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
+                <div style={{fontFamily:"var(--fd)",fontSize:64,color:"var(--gold)",fontWeight:300}}>KW</div>
+                <p style={{fontSize:12,color:"rgba(255,255,255,.4)",letterSpacing:".15em"}}>KAYANJA WILFRED</p>
+              </div>
+            </div>
+            {/* Gold accent */}
+            <div style={{position:"absolute",top:-12,left:-12,width:"100%",height:"100%",border:"2px solid var(--gold)",borderRadius:24,opacity:.2,zIndex:-1}}/>
+            {/* Founder badge */}
+            <div style={{position:"absolute",bottom:20,left:"50%",transform:"translateX(-50%)",background:"rgba(0,0,0,.8)",backdropFilter:"blur(12px)",border:"1px solid var(--brg)",borderRadius:50,padding:"10px 20px",whiteSpace:"nowrap",textAlign:"center"}}>
+              <p style={{fontFamily:"var(--fd)",fontSize:14,color:"var(--gold)",fontWeight:400,letterSpacing:".08em"}}>Kayanja Wilfred</p>
+              <p style={{fontSize:10,color:"rgba(255,255,255,.5)",letterSpacing:".1em",textTransform:"uppercase",marginTop:2}}>Founder & Creative Director</p>
+            </div>
+          </div>
+          {/* Story */}
+          <div>
+            <span className="ll" style={{display:"block",marginBottom:16}}>Our Story</span>
+            <h2 style={{fontFamily:"var(--fd)",fontSize:"clamp(28px,4vw,44px)",fontWeight:300,lineHeight:1.2,marginBottom:20}}>
+              Fashion that tells<br/><em style={{fontStyle:"italic",color:"var(--gold)"}}>your story</em>
+            </h2>
+            <p style={{fontSize:14,color:"var(--ts)",lineHeight:1.9,marginBottom:16}}>
+              Villa Vogue was born from a vision to bring world-class fashion to Uganda — a place where every piece tells a story of elegance, quality, and confidence. What started as a passion for style has grown into Kampala's most trusted fashion destination.
+            </p>
+            <p style={{fontSize:14,color:"var(--ts)",lineHeight:1.9,marginBottom:28}}>
+              We believe that great fashion should be accessible to everyone. From working professionals to brides, from students to executives — Villa Vogue has a piece for every chapter of your life.
+            </p>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:28}}>
+              {[
+                {n:"2020",l:"Founded in Kampala"},
+                {n:"500+",l:"Premium products"},
+                {n:"10K+",l:"Happy customers"},
+                {n:"⭐ 4.9",l:"Customer rating"},
+              ].map(s=>(
+                <div key={s.n} style={{background:"var(--bc)",border:"1px solid var(--br)",borderRadius:14,padding:"16px"}}>
+                  <div style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--gold)",fontWeight:300,marginBottom:4}}>{s.n}</div>
+                  <div style={{fontSize:11,color:"var(--tm)",textTransform:"uppercase",letterSpacing:".06em"}}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              <a href={`https://wa.me/256782860372?text=Hello Villa Vogue! I'd like to learn more about your brand.`} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>
+                <button style={{display:"flex",alignItems:"center",gap:7,padding:"11px 22px",background:"#25D366",color:"#fff",border:"none",borderRadius:50,fontSize:13,fontWeight:600,cursor:"pointer"}}>
+                  <IC n="wa" sz={14} c="#fff"/> Chat with Us
+                </button>
+              </a>
+            </div>
+          </div>
+        </div>
+      </Reveal>
+    </div>
+  </section>
+);
 
 const CollectionsSection = () => {
   const cs=[
@@ -1618,6 +1789,7 @@ const PortalShell = ({
         <HeroSection onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
         <CollectionsSection/>
         <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/></div>
+        <AboutSection/>
         <OrderTracking orders={orders}/>
         <LoyaltySection user={user}/>
         <Testimonials/>
@@ -1628,7 +1800,8 @@ const PortalShell = ({
       <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart} onCheckout={()=>setCheckoutOpen(true)}/>
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
       <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout}/>
-      <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}/>
+      <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}
+        onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}/>
       <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} onStaffLogin={handleStaffLogin}/>
       <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
         onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
