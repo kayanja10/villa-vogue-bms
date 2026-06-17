@@ -30,6 +30,8 @@ export function useSocket() {
 
     socket.on('connect', () => {
       console.log('[Socket] Connected:', socket.id);
+      // Re-expose on connect in case Dashboard effect ran before connect
+      window.__vv_socket = socket;
     });
 
     socket.on('disconnect', () => {

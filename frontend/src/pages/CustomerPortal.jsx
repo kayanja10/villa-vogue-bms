@@ -1614,105 +1614,163 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
     {k:"overview",l:"Overview",i:"user"},{k:"orders",l:"Orders",i:"pkg"},
     {k:"loyalty",l:"Rewards",i:"award"},{k:"settings",l:"Settings",i:"cog"},
   ];
-  const pts=user?.loyalty_points||0;
-  const tier=pts>=50000?"VIP":pts>=20000?"Platinum":pts>=5000?"Gold":pts>=1000?"Silver":"Bronze";
+  const pts=user?.loyaltyPoints||user?.loyalty_points||0;
+  const tier=pts>=50000?"VIP ✦":pts>=20000?"Platinum":pts>=5000?"Gold":pts>=1000?"Silver":"Bronze";
+  const tierColor=pts>=50000?"#9b59b6":pts>=20000?"#bdc3c7":pts>=5000?"var(--gold)":pts>=1000?"#aaa":"#cd7f32";
+
+  // Reset tab when drawer opens
+  useEffect(()=>{ if(open) setTab("overview"); },[open]);
+
   return (
     <AnimatePresence>
       {open&&(
         <>
           <motion.div onClick={onClose} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} style={{position:"fixed",inset:0,background:"var(--ov)",zIndex:1999}}/>
-          <motion.div className="vd" initial={{x:"100%"}} animate={{x:0}} exit={{x:"100%"}} transition={{type:"spring",damping:26,stiffness:260}}>
-            <div style={{padding:"22px 22px 18px",borderBottom:"1px solid var(--br)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <motion.div className="vd" initial={{x:"100%"}} animate={{x:0}} exit={{x:"100%"}} transition={{type:"spring",damping:26,stiffness:260}}
+            style={{display:"flex",flexDirection:"column"}}>
+
+            {/* Header */}
+            <div style={{padding:"22px 22px 16px",borderBottom:"1px solid var(--br)",flexShrink:0}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
                 <div style={{display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{width:46,height:46,borderRadius:"50%",background:"linear-gradient(135deg,var(--gold-d),var(--gold))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"#000"}}>
+                  <div style={{width:46,height:46,borderRadius:"50%",background:"linear-gradient(135deg,var(--gold-d),var(--gold))",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:"#000",flexShrink:0}}>
                     {user?.name?.[0]?.toUpperCase()||"U"}
                   </div>
                   <div>
                     <p style={{fontFamily:"var(--fd)",fontSize:16,fontWeight:400}}>{user?.name||"Guest"}</p>
                     <p style={{fontSize:11,color:"var(--tm)"}}>{user?.email}</p>
-                    <span className="lb" style={{marginTop:4,display:"inline-block"}}>{tier}</span>
+                    <span style={{display:"inline-block",marginTop:4,fontSize:10,fontWeight:700,letterSpacing:".08em",color:tierColor,textTransform:"uppercase"}}>⭐ {tier}</span>
                   </div>
                 </div>
-                <button onClick={onClose} style={{background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:8,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={15}/></button>
+                <button onClick={onClose} style={{background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:8,cursor:"pointer",color:"var(--ts)",flexShrink:0}}><IC n="x" sz={15}/></button>
               </div>
+
+              {/* Points bar */}
               <div style={{background:"var(--bc)",borderRadius:11,padding:"11px 14px",marginBottom:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:7}}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                   <span style={{fontSize:11,color:"var(--tm)"}}>Loyalty Points</span>
                   <span style={{fontSize:12,fontWeight:700,color:"var(--gold)"}}>{pts.toLocaleString()} pts</span>
                 </div>
-                <div className="vp"><div className="vp-f" style={{width:`${Math.min((pts/5000)*100,100)}%`}}/></div>
+                <div style={{height:5,borderRadius:10,background:"var(--br)",overflow:"hidden"}}>
+                  <div style={{height:"100%",borderRadius:10,background:"linear-gradient(to right,var(--gold-d),var(--gold))",width:`${Math.min((pts/5000)*100,100)}%`,transition:"width .6s"}}/>
+                </div>
+                <p style={{fontSize:10,color:"var(--tm)",marginTop:5}}>{Math.max(0,1000-pts)} pts to Silver · {Math.max(0,5000-pts)} pts to Gold</p>
               </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+
+              {/* Tabs */}
+              <div style={{display:"flex",gap:5}}>
                 {tabs.map(t=>(
-                  <button key={t.k} onClick={()=>setTab(t.k)}
-                    style={{padding:"6px 11px",borderRadius:8,border:`1px solid ${tab===t.k?"var(--brg)":"var(--br)"}`,background:tab===t.k?"rgba(201,168,76,.12)":"transparent",color:tab===t.k?"var(--gold)":"var(--tm)",fontSize:11,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4}}>
-                    <IC n={t.i} sz={11}/> {t.l}
+                  <button key={t.k}
+                    onClick={(e)=>{ e.stopPropagation(); setTab(t.k); }}
+                    style={{flex:1,padding:"8px 4px",borderRadius:9,border:`1.5px solid ${tab===t.k?"var(--gold)":"var(--br)"}`,
+                      background:tab===t.k?"rgba(201,168,76,.13)":"transparent",
+                      color:tab===t.k?"var(--gold)":"var(--tm)",
+                      fontSize:10,fontWeight:700,cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+                      transition:"all .2s"}}>
+                    <IC n={t.i} sz={13}/>
+                    {t.l}
                   </button>
                 ))}
               </div>
             </div>
-            <div style={{padding:"22px"}}>
-              {tab==="overview"&&(
-                <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                  {[{l:"Total Orders",v:orders.length||0,i:"pkg"},{l:"Loyalty Tier",v:tier,i:"award"}].map(s=>(
-                    <div key={s.l} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:"var(--bc)",border:"1px solid var(--br)",borderRadius:13}}>
-                      <div style={{width:38,height:38,borderRadius:"50%",background:"var(--ib)",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n={s.i} sz={17} c="var(--gold)"/></div>
-                      <div><p style={{fontSize:11,color:"var(--tm)"}}>{s.l}</p><p style={{fontSize:16,fontWeight:700,color:"var(--gold)"}}>{s.v}</p></div>
+
+            {/* Tab content */}
+            <div style={{flex:1,overflowY:"auto",padding:"18px 22px"}}>
+              <AnimatePresence mode="wait">
+
+                {tab==="overview"&&(
+                  <motion.div key="overview" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      {[
+                        {l:"Total Orders",v:orders.length||0,i:"pkg",c:"var(--gold)"},
+                        {l:"Loyalty Points",v:`${pts.toLocaleString()} pts`,i:"award",c:"var(--gold)"},
+                        {l:"Current Tier",v:tier,i:"star",c:tierColor},
+                        {l:"Member Since",v:user?.createdAt?new Date(user.createdAt).getFullYear():"2025",i:"calendar",c:"var(--tm)"},
+                      ].map(s=>(
+                        <div key={s.l} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 14px",background:"var(--bc)",border:"1px solid var(--br)",borderRadius:13}}>
+                          <div style={{width:36,height:36,borderRadius:"50%",background:"var(--ib)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><IC n={s.i} sz={16} c={s.c}/></div>
+                          <div><p style={{fontSize:11,color:"var(--tm)"}}>{s.l}</p><p style={{fontSize:15,fontWeight:700,color:s.c}}>{s.v}</p></div>
+                        </div>
+                      ))}
+                      <button onClick={()=>{ onLogout?.(); onClose(); }}
+                        style={{padding:"12px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+                        <IC n="logout" sz={14} c="#e74c3c"/> Sign Out
+                      </button>
                     </div>
-                  ))}
-                  <button onClick={onLogout} className="bgh" style={{padding:"12px",fontSize:13,color:"rgba(255,80,80,.8)",borderColor:"rgba(255,80,80,.3)",marginTop:6}}>Sign Out</button>
-                </div>
-              )}
-              {tab==="orders"&&(
-                <div>
-                  <p className="ll" style={{marginBottom:14}}>Order History</p>
-                  {orders.length===0?(
-                    <div style={{textAlign:"center",padding:"36px 0"}}>
-                      <div style={{fontSize:34,marginBottom:10,opacity:.3}}>📦</div>
-                      <p style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:300}}>No orders yet</p>
-                      <a href="/store" onClick={onClose} style={{display:"inline-block",marginTop:14}}>
-                        <button className="bg" style={{padding:"10px 24px",fontSize:13}}>Start Shopping</button>
-                      </a>
-                    </div>
-                  ):orders.map(o=>(
-                    <div key={o.id} style={{padding:13,background:"var(--bc)",border:"1px solid var(--br)",borderRadius:13,marginBottom:10}}>
-                      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-                        <span style={{fontSize:13,fontWeight:600}}>Order #{o.id}</span>
-                        <span className="lb">{o.status}</span>
+                  </motion.div>
+                )}
+
+                {tab==="orders"&&(
+                  <motion.div key="orders" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
+                    <p className="ll" style={{marginBottom:14}}>Order History</p>
+                    {orders.length===0?(
+                      <div style={{textAlign:"center",padding:"36px 0"}}>
+                        <div style={{fontSize:36,marginBottom:12,opacity:.3}}>📦</div>
+                        <p style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:300,marginBottom:6}}>No orders yet</p>
+                        <p style={{fontSize:12,color:"var(--tm)",marginBottom:16}}>Your order history will appear here</p>
+                        <button className="bg" onClick={onClose} style={{padding:"10px 24px",fontSize:13}}>Start Shopping</button>
                       </div>
-                      <p style={{fontSize:11,color:"var(--tm)"}}>{new Date(o.created_at).toLocaleDateString()}</p>
-                      <p style={{fontSize:14,color:"var(--gold)",fontWeight:700,marginTop:4}}>UGX {Number(o.total_amount).toLocaleString()}</p>
+                    ):orders.map(o=>(
+                      <div key={o.id} style={{padding:13,background:"var(--bc)",border:"1px solid var(--br)",borderRadius:13,marginBottom:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
+                          <span style={{fontSize:13,fontWeight:600}}>#{o.orderNumber||o.id}</span>
+                          <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:20,
+                            background:o.orderStatus==="completed"?"rgba(46,204,113,.15)":o.orderStatus==="pending"?"rgba(241,196,15,.15)":"rgba(231,76,60,.15)",
+                            color:o.orderStatus==="completed"?"#27ae60":o.orderStatus==="pending"?"#f39c12":"#e74c3c",
+                            textTransform:"capitalize"}}>
+                            {o.orderStatus||o.status||"pending"}
+                          </span>
+                        </div>
+                        <p style={{fontSize:11,color:"var(--tm)",marginBottom:4}}>{o.createdAt?new Date(o.createdAt).toLocaleDateString("en-UG",{day:"numeric",month:"short",year:"numeric"}):"—"}</p>
+                        <p style={{fontSize:14,color:"var(--gold)",fontWeight:700}}>UGX {Number(o.total||o.totalAmount||0).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </motion.div>
+                )}
+
+                {tab==="loyalty"&&(
+                  <motion.div key="loyalty" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
+                    <div style={{background:"linear-gradient(135deg,#1a1200,#3d2e00)",border:"1px solid var(--brg)",borderRadius:16,padding:"20px",marginBottom:16,position:"relative",overflow:"hidden"}}>
+                      <div style={{position:"absolute",top:-20,right:-20,width:100,height:100,borderRadius:"50%",background:"rgba(201,168,76,.1)"}}/>
+                      <p style={{fontSize:10,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",color:"rgba(201,168,76,.6)",marginBottom:6}}>Current Tier</p>
+                      <p style={{fontFamily:"var(--fd)",fontSize:28,fontWeight:300,color:"var(--gold)"}}>{tier}</p>
+                      <p style={{fontSize:20,fontWeight:700,color:"#fff",marginTop:4}}>{pts.toLocaleString()} <span style={{fontSize:12,fontWeight:400,color:"rgba(255,255,255,.5)"}}>points</span></p>
                     </div>
-                  ))}
-                </div>
-              )}
-              {tab==="loyalty"&&(
-                <div>
-                  <p className="ll" style={{marginBottom:14}}>Your Rewards</p>
-                  <div style={{background:"linear-gradient(135deg,var(--gold-d),var(--gold))",borderRadius:16,padding:"20px",marginBottom:18,color:"#000"}}>
-                    <div style={{fontSize:11,fontWeight:700,letterSpacing:".12em",textTransform:"uppercase",marginBottom:6,opacity:.7}}>Current Tier</div>
-                    <div style={{fontFamily:"var(--fd)",fontSize:28,fontWeight:400}}>{tier}</div>
-                    <div style={{fontSize:14,fontWeight:700,marginTop:6}}>{pts.toLocaleString()} points</div>
-                  </div>
-                  <p style={{fontSize:13,color:"var(--ts)",lineHeight:1.7}}>Earn 1 point for every UGX 1,000 spent. Redeem for discounts, free shipping, and exclusive perks.</p>
-                  <a href="/store" onClick={onClose} style={{display:"block",marginTop:14,textDecoration:"none"}}>
-                    <button className="bg" style={{width:"100%",padding:"13px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}><IC n="gift" sz={14}/> Earn More Points</button>
-                  </a>
-                </div>
-              )}
-              {tab==="settings"&&(
-                <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                  <p className="ll">Profile Settings</p>
-                  {["Full Name","Email Address","Phone Number"].map(f=>(
-                    <div key={f}>
-                      <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>{f}</label>
-                      <input className="vi" defaultValue={f==="Full Name"?user?.name:f==="Email Address"?user?.email:user?.phone||""} placeholder={f} style={{width:"100%",padding:"11px 13px",fontSize:13}}/>
+                    {[{t:"Bronze",min:0,max:999},{t:"Silver",min:1000,max:4999},{t:"Gold",min:5000,max:19999},{t:"Platinum",min:20000,max:49999},{t:"VIP ✦",min:50000,max:null}].map(tier2=>(
+                      <div key={tier2.t} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",borderRadius:10,marginBottom:6,
+                        background:pts>=(tier2.min)&&(tier2.max===null||pts<=tier2.max)?"rgba(201,168,76,.1)":"var(--bc)",
+                        border:`1px solid ${pts>=(tier2.min)&&(tier2.max===null||pts<=tier2.max)?"var(--gold)":"var(--br)"}`}}>
+                        <span style={{fontSize:12,fontWeight:600}}>{tier2.t}</span>
+                        <span style={{fontSize:11,color:"var(--tm)"}}>{tier2.max?`${tier2.min.toLocaleString()}–${tier2.max.toLocaleString()} pts`:`${tier2.min.toLocaleString()}+ pts`}</span>
+                      </div>
+                    ))}
+                    <p style={{fontSize:12,color:"var(--tm)",lineHeight:1.7,marginTop:14}}>Earn 1 point per UGX 1,000 spent. Redeem for discounts and exclusive perks.</p>
+                  </motion.div>
+                )}
+
+                {tab==="settings"&&(
+                  <motion.div key="settings" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
+                    <p className="ll" style={{marginBottom:16}}>Profile Settings</p>
+                    <div style={{display:"flex",flexDirection:"column",gap:13}}>
+                      {[{l:"Full Name",f:"name",v:user?.name||""},{l:"Email Address",f:"email",v:user?.email||""},{l:"Phone Number",f:"phone",v:user?.phone||""}].map(f=>(
+                        <div key={f.l}>
+                          <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>{f.l}</label>
+                          <input className="vi" defaultValue={f.v} placeholder={f.l} style={{width:"100%",padding:"11px 13px",fontSize:13}}/>
+                        </div>
+                      ))}
+                      <button className="bg" style={{padding:"12px",fontSize:13,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+                        <IC n="check" sz={14}/> Save Changes
+                      </button>
+                      <button onClick={()=>{ onLogout?.(); onClose(); }}
+                        style={{padding:"11px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+                        <IC n="logout" sz={14} c="#e74c3c"/> Sign Out
+                      </button>
                     </div>
-                  ))}
-                  <button className="bg" style={{padding:"12px",fontSize:13,marginTop:4}}>Save Changes</button>
-                </div>
-              )}
+                  </motion.div>
+                )}
+
+              </AnimatePresence>
             </div>
           </motion.div>
         </>

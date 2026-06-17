@@ -130,34 +130,49 @@ export default function Dashboard() {
 
   // ── Listen for online orders via Socket.IO ──────────────────────────────
   useEffect(() => {
-    // The app's global socket is on window.__vv_socket (set by useSocket hook)
-    // We also try the common io() patterns
-    const socket = window.__vv_socket || window.socket;
-    if (!socket) return;
+    let socket = null;
+    let attempts = 0;
 
-    const handler = (order) => {
-      // Play a notification sound
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.setValueAtTime(880, ctx.currentTime);
-        osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
-        gain.gain.setValueAtTime(0.3, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
-      } catch {}
+    const attach = () => {
+      // Try multiple ways the socket might be stored
+      socket = window.__vv_socket || window.socket || null;
+      if (!socket && attempts < 20) {
+        attempts++;
+        setTimeout(attach, 500); // retry every 500ms for up to 10s
+        return;
+      }
+      if (!socket) return;
 
-      // Show toast + add to banner queue
-      toast.success(`🛍 New online order: ${order.orderNumber} — UGX ${Number(order.total).toLocaleString()}`, { duration: 8000 });
-      setOnlineAlerts(prev => [{ ...order, _key: Date.now() }, ...prev].slice(0, 5));
-      // Refresh orders list
-      queryClient.invalidateQueries(['dashboard']);
+      const handler = (order) => {
+        // Play a two-tone alert sound
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          [880, 660].forEach((freq, i) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.25, ctx.currentTime + i * 0.12);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + i * 0.12 + 0.3);
+            osc.start(ctx.currentTime + i * 0.12);
+            osc.stop(ctx.currentTime + i * 0.12 + 0.3);
+          });
+        } catch {}
+
+        toast.success(
+          `🛍 New online order: ${order.orderNumber} — UGX ${Number(order.total).toLocaleString()}`,
+          { duration: 10000, id: `order-${order.orderNumber}` }
+        );
+        setOnlineAlerts(prev => [{ ...order, _key: Date.now() }, ...prev].slice(0, 5));
+        queryClient.invalidateQueries(['dashboard']);
+      };
+
+      socket.on('online:order', handler);
+      return () => socket.off('online:order', handler);
     };
 
-    socket.on('online:order', handler);
-    return () => socket.off('online:order', handler);
+    const cleanup = attach();
+    return () => { if (typeof cleanup === 'function') cleanup(); };
   }, [queryClient]);
 
   const { data, isLoading, refetch } = useQuery({
