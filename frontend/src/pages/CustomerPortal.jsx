@@ -1,3 +1,4 @@
+// Villa Vogue Customer Portal v3.1 — multi-image gallery build
 // VILLA VOGUE CUSTOMER PORTAL — LUXURY EDITION v2.0
 // Dark/Light Mode | Staff Login | All Features Preserved
 
