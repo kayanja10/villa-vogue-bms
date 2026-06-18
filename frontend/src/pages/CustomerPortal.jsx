@@ -381,26 +381,74 @@ const SearchOverlay = ({open,onClose,products=[]}) => {
   );
 };
 
+// ── Parse images from backend (handles both string URLs and object format) ────
+const parseImages = (raw) => {
+  try {
+    const arr = JSON.parse(raw || '[]');
+    return arr.map(i => typeof i === 'string' ? { url: i, label: 'Image', isPrimary: false } : i);
+  } catch { return []; }
+};
+
+const getPrimaryImage = (p) => {
+  if (p.image_url) return p.image_url;
+  const imgs = parseImages(p.images);
+  const primary = imgs.find(i => i.isPrimary) || imgs[0];
+  return primary?.url || null;
+};
+
+const getSecondaryImage = (p) => {
+  const imgs = parseImages(p.images);
+  // Show "Back" or second image on hover
+  const back = imgs.find(i => i.label === 'Back');
+  if (back) return back.url;
+  return imgs[1]?.url || null;
+};
+
 const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlisted}) => {
   const toast=useToast();
   const [ha,setHa]=useState(false);
+  const [hovered,setHovered]=useState(false);
+  const primaryImg = getPrimaryImage(p);
+  const secondaryImg = getSecondaryImage(p);
+  const allImgs = parseImages(p.images);
+  const imgCount = allImgs.length || (p.image_url ? 1 : 0);
   const wl=e=>{e.stopPropagation();setHa(true);setTimeout(()=>setHa(false),400);onWishlistToggle(p);toast(wishlisted?"Removed from wishlist":"Added to wishlist","i","♥");};
   const ac=e=>{e.stopPropagation();onAddToCart(p);toast(`${p.name} added to cart`,"ok","✦");};
   return (
-    <div className="pc" onClick={()=>onQuickView(p)}>
+    <div className="pc" onClick={()=>onQuickView(p)} onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>setHovered(false)}>
       <div style={{position:"relative",overflow:"hidden",height:280,background:"var(--bt)"}}>
-        {p.image_url
-          ?<img src={p.image_url} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",transition:"transform .5s"}}
-              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.07)"}
-              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}/>
+        {/* Primary image */}
+        {primaryImg
+          ?<img src={primaryImg} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover",transition:"transform .5s, opacity .4s",
+              transform:hovered&&secondaryImg?"scale(1.02)":"scale(1)",
+              opacity:hovered&&secondaryImg?0:1,position:"absolute",inset:0}}/>
           :<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"var(--fd)",fontSize:32,opacity:.2}}>VV</span></div>
         }
+        {/* Secondary image (back/alt) fades in on hover */}
+        {secondaryImg&&(
+          <img src={secondaryImg} alt={`${p.name} — back`}
+            style={{width:"100%",height:"100%",objectFit:"cover",transition:"opacity .4s",
+              opacity:hovered?1:0,position:"absolute",inset:0}}/>
+        )}
         <div className="co"/>
+        {/* Badges */}
         <div style={{position:"absolute",top:12,left:12,display:"flex",flexDirection:"column",gap:5}}>
           {p.is_new&&<span className="lb">New</span>}
           {p.is_sale&&<span className="sb">Sale</span>}
           {p.stock_quantity>0&&p.stock_quantity<5&&<span style={{background:"rgba(255,100,50,.9)",color:"#fff",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:50}}>Only {p.stock_quantity} left</span>}
         </div>
+        {/* Image count badge */}
+        {imgCount>1&&(
+          <div style={{position:"absolute",bottom:52,right:10,background:"rgba(0,0,0,.55)",color:"#fff",fontSize:10,fontWeight:600,padding:"3px 8px",borderRadius:20,display:"flex",alignItems:"center",gap:4}}>
+            <IC n="image" sz={9} c="#fff"/> {imgCount}
+          </div>
+        )}
+        {/* Hover label: "see back" */}
+        {secondaryImg&&hovered&&(
+          <div style={{position:"absolute",bottom:52,left:10,background:"rgba(0,0,0,.55)",color:"#fff",fontSize:9,padding:"3px 8px",borderRadius:20,letterSpacing:".06em"}}>
+            BACK VIEW
+          </div>
+        )}
         <motion.button onClick={wl} className={ha?"hp":""} whileTap={{scale:.85}}
           style={{position:"absolute",top:12,right:12,width:34,height:34,borderRadius:"50%",background:"var(--bg)",backdropFilter:"blur(10px)",border:"1px solid var(--br)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
           <IC n={wishlisted?"hf":"heart"} sz={15} c={wishlisted?"var(--gold)":"var(--ts)"}/>
@@ -438,25 +486,187 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
   const [size,setSize]=useState("");
   const [color,setColor]=useState("");
   const [ordering,setOrdering]=useState(false);
+  const [imgIdx,setImgIdx]=useState(0);
+  const [zoomed,setZoomed]=useState(false);
   const szs=["XS","S","M","L","XL","XXL"];
   const cls=["#1A1A1A","#F5F0E8","#8B5E3C","#C9A84C","#3A3A6A","#8B3A3A"];
   if(!p)return null;
+
+  // Parse all images from the product
+  const allImages = (() => {
+    const parsed = parseImages(p.images);
+    if (parsed.length) return parsed;
+    if (p.image_url) return [{ url: p.image_url, label: 'Front', isPrimary: true }];
+    return [];
+  })();
+
+  const currentImg = allImages[imgIdx];
+  const prevImg = () => setImgIdx(i => (i - 1 + allImages.length) % allImages.length);
+  const nextImg = () => setImgIdx(i => (i + 1) % allImages.length);
+
+  // Reset image index when product changes
+  React.useEffect(() => { setImgIdx(0); setQty(1); setSize(""); setColor(""); }, [p?.id]);
 
   const waText = encodeURIComponent(
     `Hello Villa Vogue! 🛍️\n\nI'd like to order:\n• ${p.name}${size?` (Size: ${size})`:""}${color?` (Color: ${color})`:""}  x${qty} — UGX ${(Number(p.price)*qty).toLocaleString()}\n\n*Total: UGX ${(Number(p.price)*qty).toLocaleString()}*\n\nPlease confirm availability. Thank you!`
   );
 
-  // Place a direct single-product online order without going through the cart
   const handleOrderOnline = async () => {
     setOrdering(true);
     try {
       onClose();
-      // Pass product directly to checkout modal pre-filled
       onOrderOnline?.({...p, qty, selectedSize:size, selectedColor:color});
-    } finally {
-      setOrdering(false);
-    }
+    } finally { setOrdering(false); }
   };
+
+  const labelColor = (label) => {
+    const map = { Front:'#2d7a4f', Back:'#2980b9', Side:'#8e44ad', Detail:'#e67e22', 'Color Alt':'#C9A96E', 'On Model':'#c0392b' };
+    return map[label] || '#666';
+  };
+
+  return (
+    <AnimatePresence>
+      {open&&(
+        <motion.div className="mb" onClick={e=>e.target===e.currentTarget&&onClose()} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+          <motion.div className="vm" initial={{opacity:0,scale:.94,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.96,y:10}}
+            style={{maxWidth:700,overflowY:"auto",maxHeight:"92vh"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",minHeight:500}}>
+
+              {/* ── Left: Image Gallery ── */}
+              <div style={{background:"var(--bt)",position:"relative",borderRadius:"var(--rxl) 0 0 var(--rxl)",overflow:"hidden",display:"flex",flexDirection:"column"}}>
+                {/* Main image */}
+                <div style={{flex:1,position:"relative",minHeight:300,cursor:zoomed?"zoom-out":"zoom-in"}} onClick={()=>setZoomed(z=>!z)}>
+                  <AnimatePresence mode="wait">
+                    <motion.img key={imgIdx} src={currentImg?.url} alt={currentImg?.label||p.name}
+                      initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:.25}}
+                      style={{width:"100%",height:"100%",objectFit:zoomed?"contain":"cover",position:"absolute",inset:0,transition:"object-fit .2s"}}/>
+                  </AnimatePresence>
+
+                  {/* Label badge */}
+                  {currentImg?.label&&(
+                    <div style={{position:"absolute",top:12,left:12,fontSize:10,fontWeight:700,padding:"4px 10px",borderRadius:20,
+                      background:labelColor(currentImg.label),color:"#fff",letterSpacing:".06em",textTransform:"uppercase"}}>
+                      {currentImg.label}
+                    </div>
+                  )}
+                  {currentImg?.isPrimary&&(
+                    <div style={{position:"absolute",top:12,left:currentImg?.label?90:12,fontSize:9,fontWeight:700,padding:"4px 8px",borderRadius:20,background:"var(--gold)",color:"#000"}}>
+                      PRIMARY
+                    </div>
+                  )}
+
+                  {/* Zoom hint */}
+                  <div style={{position:"absolute",bottom:8,right:8,fontSize:9,color:"rgba(255,255,255,.6)",background:"rgba(0,0,0,.4)",padding:"3px 7px",borderRadius:10}}>
+                    {zoomed?"Click to shrink":"Click to zoom"}
+                  </div>
+
+                  {/* Arrow nav */}
+                  {allImages.length>1&&(<>
+                    <button onClick={e=>{e.stopPropagation();prevImg();}} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+                    <button onClick={e=>{e.stopPropagation();nextImg();}} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:28,height:28,borderRadius:"50%",background:"rgba(0,0,0,.45)",border:"none",color:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+                  </>)}
+
+                  {/* Image counter */}
+                  {allImages.length>1&&(
+                    <div style={{position:"absolute",bottom:8,left:8,fontSize:10,color:"rgba(255,255,255,.8)",background:"rgba(0,0,0,.45)",padding:"3px 8px",borderRadius:10}}>
+                      {imgIdx+1} / {allImages.length}
+                    </div>
+                  )}
+
+                  {/* Badges */}
+                  {p.is_new&&<span className="lb" style={{position:"absolute",top:allImages.length>1?44:12,left:12}}>New Arrival</span>}
+                </div>
+
+                {/* Thumbnail strip */}
+                {allImages.length>1&&(
+                  <div style={{display:"flex",gap:6,padding:"8px 10px",background:"rgba(0,0,0,.2)",overflowX:"auto",flexShrink:0}}>
+                    {allImages.map((img,i)=>(
+                      <button key={i} onClick={()=>setImgIdx(i)}
+                        style={{flexShrink:0,width:46,height:46,borderRadius:8,overflow:"hidden",border:`2px solid ${i===imgIdx?"var(--gold)":"rgba(255,255,255,.2)"}`,cursor:"pointer",padding:0,position:"relative",transition:"border .2s"}}>
+                        <img src={img.url} alt={img.label} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"rgba(0,0,0,.6)",fontSize:7,color:"#fff",textAlign:"center",padding:"2px",letterSpacing:".04em",textTransform:"uppercase"}}>
+                          {img.label?.slice(0,5)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Right: Product Details ── */}
+              <div style={{padding:"22px 20px",display:"flex",flexDirection:"column",position:"relative",overflowY:"auto"}}>
+                <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={15}/></button>
+                <p className="ll" style={{marginBottom:5}}>{p.category}</p>
+                <h2 style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:400,lineHeight:1.2,marginBottom:8,paddingRight:28}}>{p.name}</h2>
+                <Stars r={p.rating||4.2} count={p.review_count||0} sz={14}/>
+                <div style={{margin:"10px 0"}}><span style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:500,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span></div>
+                <p style={{fontSize:12,color:"var(--ts)",lineHeight:1.7,marginBottom:12}}>{p.description||"Premium quality fashion piece crafted with meticulous attention to detail. A timeless addition to your wardrobe."}</p>
+
+                {/* Image labels legend — shows what views are available */}
+                {allImages.length>1&&(
+                  <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12}}>
+                    {allImages.map((img,i)=>(
+                      <button key={i} onClick={()=>setImgIdx(i)}
+                        style={{fontSize:10,padding:"3px 9px",borderRadius:20,border:`1.5px solid ${i===imgIdx?labelColor(img.label):"var(--br)"}`,
+                          background:i===imgIdx?`${labelColor(img.label)}18`:"transparent",
+                          color:i===imgIdx?labelColor(img.label):"var(--tm)",cursor:"pointer",fontWeight:600,transition:"all .2s"}}>
+                        {img.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{marginBottom:12}}>
+                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:7}}>Size</p>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {szs.map(s=><button key={s} onClick={()=>setSize(s)} style={{width:34,height:34,borderRadius:8,background:size===s?"var(--gold)":"var(--ib)",border:`1px solid ${size===s?"var(--gold)":"var(--br)"}`,color:size===s?"#000":"var(--tp)",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .2s"}}>{s}</button>)}
+                  </div>
+                </div>
+                <div style={{marginBottom:14}}>
+                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:7}}>Color</p>
+                  <div style={{display:"flex",gap:6}}>
+                    {cls.map(c=><button key={c} onClick={()=>setColor(c)} style={{width:24,height:24,borderRadius:"50%",background:c,border:"2px solid transparent",cursor:"pointer",outline:color===c?"2px solid var(--gold)":"none",outlineOffset:2,transition:"all .2s"}}/>)}
+                  </div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                  <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{width:30,height:30,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="minus" sz={12}/></button>
+                  <span style={{fontSize:14,fontWeight:600,width:24,textAlign:"center"}}>{qty}</span>
+                  <button onClick={()=>setQty(q=>q+1)} style={{width:30,height:30,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="plus" sz={12}/></button>
+                  <span style={{fontSize:11,color:"var(--tm)",marginLeft:4}}>
+                    {p.stock_quantity>0?`${p.stock_quantity} in stock`:<span style={{color:"#e74c3c"}}>Out of stock</span>}
+                  </span>
+                </div>
+
+                {/* Add to Cart */}
+                <motion.button className="bgh" onClick={()=>{onAddToCart({...p,qty,selectedSize:size,selectedColor:color});toast(`${p.name} added to cart ✦`);onClose();}} whileTap={{scale:.97}}
+                  style={{padding:"11px",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:8}}>
+                  <IC n="cart" sz={13}/> Add to Cart
+                </motion.button>
+
+                {/* ORDER ONLINE */}
+                <motion.button className="bg" onClick={handleOrderOnline} disabled={ordering||p.stock_quantity===0} whileTap={{scale:.97}}
+                  style={{padding:"12px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:8,fontWeight:700,opacity:p.stock_quantity===0?.5:1}}>
+                  <IC n="lock" sz={14}/> Order Online — UGX {(Number(p.price)*qty).toLocaleString()}
+                </motion.button>
+
+                {/* ORDER VIA WHATSAPP */}
+                <a href={`https://wa.me/256782860372?text=${waText}`} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>
+                  <motion.button whileTap={{scale:.97}}
+                    style={{width:"100%",padding:"11px",background:"#25D366",color:"#fff",border:"none",borderRadius:50,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,fontSize:13,fontWeight:600}}>
+                    <IC n="wa" sz={14} c="#fff"/> Order via WhatsApp
+                  </motion.button>
+                </a>
+                <p style={{fontSize:10,color:"var(--tm)",textAlign:"center",marginTop:10}}>
+                  🔒 Online orders go directly to our system · WhatsApp for instant chat
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
 
   return (
     <AnimatePresence>
@@ -1166,15 +1376,18 @@ const CollectionsSection = () => {
 // Backend sends: stock (number), images (JSON string "[url,...]"),
 //   category (object {id,name} or string), brand (object or string)
 // Portal expects: stock_quantity, image_url, category (string), brand (string)
-const normalizeProduct = (p) => ({
-  ...p,
-  stock_quantity: p.stock_quantity ?? p.stock ?? 0,
-  image_url: p.image_url || (() => {
-    try { const a = JSON.parse(p.images || "[]"); return a[0] || null; } catch { return null; }
-  })(),
-  category: typeof p.category === "object" && p.category !== null ? p.category.name || "" : (p.category || ""),
-  brand:    typeof p.brand    === "object" && p.brand    !== null ? p.brand.name    || "" : (p.brand    || ""),
-});
+const normalizeProduct = (p) => {
+  const imgs = parseImages(p.images);
+  const primary = imgs.find(i => i.isPrimary) || imgs[0];
+  return {
+    ...p,
+    stock_quantity: p.stock_quantity ?? p.stock ?? 0,
+    image_url: p.image_url || primary?.url || null,
+    _allImages: imgs,
+    category: typeof p.category === "object" && p.category !== null ? p.category.name || "" : (p.category || ""),
+    brand:    typeof p.brand    === "object" && p.brand    !== null ? p.brand.name    || "" : (p.brand    || ""),
+  };
+};
 
 const PRODUCTS_PER_PAGE = 8;
 
