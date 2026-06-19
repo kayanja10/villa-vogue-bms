@@ -490,6 +490,13 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
   const [zoomed,setZoomed]=useState(false);
   const szs=["XS","S","M","L","XL","XXL"];
   const cls=["#1A1A1A","#F5F0E8","#8B5E3C","#C9A84C","#3A3A6A","#8B3A3A"];
+
+  // Reset image index/selections when product changes — MUST run before any early return
+  // so hook count stays consistent across renders (fixes React error #310)
+  useEffect(() => {
+    setImgIdx(0); setQty(1); setSize(""); setColor(""); setZoomed(false);
+  }, [p?.id]);
+
   if(!p)return null;
 
   // Parse all images from the product
@@ -503,9 +510,6 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
   const currentImg = allImages[imgIdx];
   const prevImg = () => setImgIdx(i => (i - 1 + allImages.length) % allImages.length);
   const nextImg = () => setImgIdx(i => (i + 1) % allImages.length);
-
-  // Reset image index when product changes
-  React.useEffect(() => { setImgIdx(0); setQty(1); setSize(""); setColor(""); }, [p?.id]);
 
   const waText = encodeURIComponent(
     `Hello Villa Vogue! 🛍️\n\nI'd like to order:\n• ${p.name}${size?` (Size: ${size})`:""}${color?` (Color: ${color})`:""}  x${qty} — UGX ${(Number(p.price)*qty).toLocaleString()}\n\n*Total: UGX ${(Number(p.price)*qty).toLocaleString()}*\n\nPlease confirm availability. Thank you!`
