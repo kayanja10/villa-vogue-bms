@@ -1,4 +1,3 @@
-// Villa Vogue Customer Portal v3.1 — multi-image gallery build
 // VILLA VOGUE CUSTOMER PORTAL — LUXURY EDITION v2.0
 // Dark/Light Mode | Staff Login | All Features Preserved
 
@@ -669,76 +668,6 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
   );
 };
 
-  return (
-    <AnimatePresence>
-      {open&&(
-        <motion.div className="mb" onClick={e=>e.target===e.currentTarget&&onClose()} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-          <motion.div className="vm" initial={{opacity:0,scale:.94,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.96,y:10}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",minHeight:460}}>
-              <div style={{background:"var(--bt)",position:"relative",overflow:"hidden",borderRadius:"var(--rxl) 0 0 var(--rxl)"}}>
-                {p.image_url?<img src={p.image_url} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                  :<div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"var(--fd)",fontSize:48,opacity:.2}}>VV</span></div>}
-                {p.is_new&&<span className="lb" style={{position:"absolute",top:14,left:14}}>New Arrival</span>}
-              </div>
-              <div style={{padding:"28px 24px",display:"flex",flexDirection:"column",position:"relative",overflowY:"auto"}}>
-                <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={15}/></button>
-                <p className="ll" style={{marginBottom:5}}>{p.category}</p>
-                <h2 style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:400,lineHeight:1.2,marginBottom:8}}>{p.name}</h2>
-                <Stars r={p.rating||4.2} count={p.review_count||0} sz={14}/>
-                <div style={{margin:"10px 0"}}><span style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:500,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span></div>
-                <p style={{fontSize:12,color:"var(--ts)",lineHeight:1.7,marginBottom:12}}>{p.description||"Premium quality fashion piece crafted with meticulous attention to detail. A timeless addition to your wardrobe."}</p>
-                <div style={{marginBottom:12}}>
-                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:7}}>Size</p>
-                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                    {szs.map(s=><button key={s} onClick={()=>setSize(s)} style={{width:36,height:36,borderRadius:8,background:size===s?"var(--gold)":"var(--ib)",border:`1px solid ${size===s?"var(--gold)":"var(--br)"}`,color:size===s?"#000":"var(--tp)",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all .2s"}}>{s}</button>)}
-                  </div>
-                </div>
-                <div style={{marginBottom:14}}>
-                  <p style={{fontSize:11,fontWeight:600,letterSpacing:".1em",textTransform:"uppercase",color:"var(--tm)",marginBottom:7}}>Color</p>
-                  <div style={{display:"flex",gap:6}}>
-                    {cls.map(c=><button key={c} onClick={()=>setColor(c)} style={{width:24,height:24,borderRadius:"50%",background:c,border:"2px solid transparent",cursor:"pointer",outline:color===c?"2px solid var(--gold)":"none",outlineOffset:2,transition:"all .2s"}}/>)}
-                  </div>
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-                  <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{width:30,height:30,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="minus" sz={12}/></button>
-                  <span style={{fontSize:14,fontWeight:600,width:24,textAlign:"center"}}>{qty}</span>
-                  <button onClick={()=>setQty(q=>q+1)} style={{width:30,height:30,borderRadius:8,background:"var(--ib)",border:"1px solid var(--br)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><IC n="plus" sz={12}/></button>
-                  <span style={{fontSize:11,color:"var(--tm)",marginLeft:4}}>
-                    {p.stock_quantity>0?`${p.stock_quantity} in stock`:<span style={{color:"#e74c3c"}}>Out of stock</span>}
-                  </span>
-                </div>
-
-                {/* Add to Cart */}
-                <motion.button className="bgh" onClick={()=>{onAddToCart({...p,qty,selectedSize:size,selectedColor:color});toast(`${p.name} added to cart ✦`);onClose();}} whileTap={{scale:.97}}
-                  style={{padding:"11px",fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:8}}>
-                  <IC n="cart" sz={13}/> Add to Cart
-                </motion.button>
-
-                {/* ORDER ONLINE — goes directly to orders + notification */}
-                <motion.button className="bg" onClick={handleOrderOnline} disabled={ordering||p.stock_quantity===0} whileTap={{scale:.97}}
-                  style={{padding:"12px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,marginBottom:8,fontWeight:700,opacity:p.stock_quantity===0?.5:1}}>
-                  <IC n="lock" sz={14}/> Order Online — UGX {(Number(p.price)*qty).toLocaleString()}
-                </motion.button>
-
-                {/* ORDER VIA WHATSAPP */}
-                <a href={`https://wa.me/256782860372?text=${waText}`} target="_blank" rel="noopener noreferrer" style={{textDecoration:"none"}}>
-                  <motion.button whileTap={{scale:.97}}
-                    style={{width:"100%",padding:"11px",background:"#25D366",color:"#fff",border:"none",borderRadius:50,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,fontSize:13,fontWeight:600}}>
-                    <IC n="wa" sz={14} c="#fff"/> Order via WhatsApp
-                  </motion.button>
-                </a>
-
-                <p style={{fontSize:10,color:"var(--tm)",textAlign:"center",marginTop:10}}>
-                  🔒 Online orders go directly to our system · WhatsApp for instant chat
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-};
 
 // ── WhatsApp cart share helper ───────────────────────────────────────────────
 const buildWhatsAppCartMsg = (cart,total) => {
