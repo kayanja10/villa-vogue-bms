@@ -327,13 +327,11 @@ export default function Login() {
         /* Logo */
         .vv-logo { text-align: center; margin-bottom: 38px; }
         .vv-logo-mark {
-          width: 52px; height: 52px; margin: 0 auto 14px;
+          width: 56px; height: 56px; margin: 0 auto 14px;
           background: linear-gradient(135deg, #C9A96E 0%, #8B6914 100%);
-          border-radius: 14px;
+          border-radius: 16px;
           display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 8px 24px rgba(201,169,110,0.3);
-          font-family: 'Cormorant Garamond', serif;
-          color: #fff; font-size: 22px; font-weight: 600; letter-spacing: 1px;
+          box-shadow: 0 8px 24px rgba(201,169,110,0.35);
         }
         .vv-logo-name {
           font-family: 'Cormorant Garamond', serif; font-weight: 300;
@@ -470,7 +468,15 @@ export default function Login() {
         <div className="vv-card">
           {/* Logo */}
           <div className="vv-logo">
-            <div className="vv-logo-mark">VV</div>
+            <div className="vv-logo-mark">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                {/* Hanger hook */}
+                <path d="M12 2C12 2 10.5 3 10.5 4.2C10.5 5 11.2 5.6 12 5.6C12.8 5.6 13.5 5 13.5 4.2C13.5 3 12 2 12 2Z" stroke="white" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                <line x1="12" y1="5.6" x2="12" y2="8" stroke="white" strokeWidth="1.4" strokeLinecap="round"/>
+                {/* Garment / dress silhouette */}
+                <path d="M12 8L5 13.5C4.3 14.1 4.6 15.2 5.5 15.4L8 16V20.5C8 21.3 8.7 22 9.5 22H14.5C15.3 22 16 21.3 16 20.5V16L18.5 15.4C19.4 15.2 19.7 14.1 19 13.5L12 8Z" stroke="white" strokeWidth="1.4" strokeLinejoin="round" fill="none"/>
+              </svg>
+            </div>
             <div className="vv-logo-name">Villa Vogue</div>
             <div className="vv-logo-sub">Business Management System</div>
             <div className="vv-divider" />
