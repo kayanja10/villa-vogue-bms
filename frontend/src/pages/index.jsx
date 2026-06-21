@@ -296,6 +296,145 @@ export function Orders() {
   );
 }
 
+// ─── MULTI-IMAGE UPLOADER (drag/drop, label, reorder, set primary) ─────────
+const IMAGE_LABELS = ['Front', 'Back', 'Side', 'Detail', 'Color Alt', 'On Model', 'Packaging', 'Other'];
+
+function MultiImageUploader({ images, onChange }) {
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [dragIdx, setDragIdx] = useState(null);
+  const fileRef = useRef();
+
+  const uploadFiles = async (files) => {
+    const arr = Array.from(files).slice(0, 8 - images.length);
+    if (!arr.length) return;
+    setUploading(true);
+    try {
+      const results = await Promise.all(arr.map(f => apiLib.uploads.image(f).then(r => r.data?.url || r.data)));
+      const newImgs = results.map((url, i) => ({
+        url,
+        label: IMAGE_LABELS[images.length + i] || 'Other',
+        isPrimary: images.length === 0 && i === 0,
+      }));
+      onChange([...images, ...newImgs]);
+      toast.success(`${results.length} image${results.length > 1 ? 's' : ''} uploaded`);
+    } catch {
+      toast.error('Upload failed — check file size and format');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeImage = (idx) => {
+    const next = images.filter((_, i) => i !== idx);
+    if (images[idx]?.isPrimary && next.length) next[0] = { ...next[0], isPrimary: true };
+    onChange(next);
+  };
+
+  const setPrimary = (idx) => onChange(images.map((img, i) => ({ ...img, isPrimary: i === idx })));
+  const setLabel = (idx, label) => onChange(images.map((img, i) => i === idx ? { ...img, label } : img));
+
+  const onDragStart = (i) => setDragIdx(i);
+  const onDragOverItem = (e, i) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === i) return;
+    const next = [...images];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(i, 0, moved);
+    setDragIdx(i);
+    onChange(next);
+  };
+  const onDropZone = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    setDragIdx(null);
+    if (e.dataTransfer.files?.length) uploadFiles(e.dataTransfer.files);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <label className="label mb-0">Product Images <span className="text-[#C9A96E]">*</span></label>
+        <span className="text-xs text-gray-400">{images.length}/8 · Drag to reorder</span>
+      </div>
+
+      {images.length > 0 && (
+        <div className="grid grid-cols-4 gap-2 mb-3">
+          {images.map((img, i) => (
+            <div key={i} draggable
+              onDragStart={() => onDragStart(i)}
+              onDragOver={(e) => onDragOverItem(e, i)}
+              onDragEnd={() => setDragIdx(null)}
+              className={`relative group rounded-xl overflow-hidden border-2 transition-all cursor-grab ${img.isPrimary ? 'border-[#C9A96E]' : 'border-gray-200 dark:border-gray-700'} ${dragIdx === i ? 'opacity-50 scale-95' : ''}`}
+              style={{ aspectRatio: '1' }}>
+              <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
+              {img.isPrimary && (
+                <div className="absolute top-1 left-1 bg-[#C9A96E] text-black text-[9px] font-bold px-1.5 py-0.5 rounded-full">PRIMARY</div>
+              )}
+              <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <GripVertical size={12} className="text-white drop-shadow" />
+              </div>
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-1">
+                {!img.isPrimary && (
+                  <button type="button" onClick={() => setPrimary(i)} className="text-[10px] bg-[#C9A96E] text-black font-bold px-2 py-1 rounded-full w-full text-center">★ Set Primary</button>
+                )}
+                <select value={img.label} onChange={e => setLabel(i, e.target.value)} className="text-[10px] bg-white/20 text-white border border-white/30 rounded-lg px-1 py-0.5 w-full">
+                  {IMAGE_LABELS.map(l => <option key={l} value={l} className="text-black">{l}</option>)}
+                </select>
+                <button type="button" onClick={() => removeImage(i)} className="text-[10px] bg-red-500 text-white font-bold px-2 py-1 rounded-full w-full text-center">Remove</button>
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">{img.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {images.length < 8 && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={onDropZone}
+          onClick={() => fileRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition-all ${dragOver ? 'border-[#C9A96E] bg-[#C9A96E]/10' : 'border-gray-300 dark:border-gray-600 hover:border-[#C9A96E]/50 hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}>
+          {uploading ? (
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-6 h-6 border-2 border-[#C9A96E] border-t-transparent rounded-full animate-spin" />
+              <p className="text-sm text-gray-500">Uploading…</p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1.5">
+              <div className="w-9 h-9 rounded-full bg-[#C9A96E]/10 flex items-center justify-center">
+                <ImgIcon size={16} className="text-[#C9A96E]" />
+              </div>
+              <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{dragOver ? 'Drop to upload' : 'Click or drag images here'}</p>
+              <p className="text-xs text-gray-400">JPG, PNG, WEBP · {8 - images.length} remaining</p>
+            </div>
+          )}
+          <input ref={fileRef} type="file" multiple accept="image/*" className="hidden" onChange={e => uploadFiles(e.target.files)} />
+        </div>
+      )}
+      {images.length > 0 && <p className="text-xs text-gray-400 mt-2">💡 Hover an image to set primary, change label, or remove. Drag to reorder.</p>}
+    </div>
+  );
+}
+
+// Small image-stack preview for the table row
+function ProductImagesPreview({ imagesJson }) {
+  const parsed = (() => { try { return JSON.parse(imagesJson || '[]'); } catch { return []; } })();
+  const imgs = parsed.map(i => typeof i === 'string' ? i : i.url).filter(Boolean);
+  if (!imgs.length) return <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg">👗</div>;
+  return (
+    <div className="flex -space-x-2">
+      {imgs.slice(0, 3).map((url, i) => (
+        <img key={i} src={url} alt="" className="w-10 h-10 rounded-lg object-cover border-2 border-white dark:border-gray-900 shadow-sm" style={{ zIndex: 3 - i }} />
+      ))}
+      {imgs.length > 3 && (
+        <div className="w-10 h-10 rounded-lg bg-[#C9A96E]/20 border-2 border-white dark:border-gray-900 flex items-center justify-center text-[10px] font-bold text-[#A8824A]">+{imgs.length - 3}</div>
+      )}
+    </div>
+  );
+}
+
 // ─── INVENTORY ─────────────────────────────────────────────────
 export function Inventory() {
   const qc = useQueryClient();
