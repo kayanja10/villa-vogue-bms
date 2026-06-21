@@ -4,6 +4,30 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const prisma = new PrismaClient();
 
+// ── Auto-generate SKU ─────────────────────────────────────────────────────────
+// Format: VV-{CATEGORY3}-{SEQ4}  e.g. VV-DRE-0001, VV-GEN-0042 (no category)
+async function generateSku(categoryId) {
+  let prefix = 'GEN';
+  if (categoryId) {
+    try {
+      const cat = await prisma.category.findUnique({ where: { id: parseInt(categoryId) } });
+      if (cat?.name) prefix = cat.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase().padEnd(3, 'X');
+    } catch { /* fall back to GEN */ }
+  }
+  // Find highest existing sequence for this prefix to avoid collisions
+  const existing = await prisma.product.findMany({
+    where: { sku: { startsWith: `VV-${prefix}-` } },
+    select: { sku: true },
+  });
+  let maxSeq = 0;
+  for (const p of existing) {
+    const match = p.sku?.match(/-(\d+)$/);
+    if (match) maxSeq = Math.max(maxSeq, parseInt(match[1], 10));
+  }
+  const nextSeq = String(maxSeq + 1).padStart(4, '0');
+  return `VV-${prefix}-${nextSeq}`;
+}
+
 // GET /api/products
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -70,6 +94,18 @@ router.get('/low-stock', authenticate, requireManagerOrAdmin, async (req, res) =
   }
 });
 
+// GET /api/products/next-sku — preview the next SKU before saving (for the Inventory form)
+// MUST be registered before /:id so Express doesn't treat "next-sku" as an ID
+router.get('/next-sku', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const { categoryId } = req.query;
+    const sku = await generateSku(categoryId);
+    res.json({ sku });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/products/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
@@ -88,8 +124,12 @@ router.get('/:id', authenticate, async (req, res) => {
 router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const { name, sku, barcode, categoryId, price, costPrice, stock, lowStockThreshold, description, images, tags, variants, supplierId, isFeatured } = req.body;
+
+    // Auto-generate SKU if not provided (or blank) — guarantees every product has one
+    const finalSku = sku && sku.trim() ? sku.trim() : await generateSku(categoryId);
+
     const product = await prisma.product.create({
-      data: { name, sku, barcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },
+      data: { name, sku: finalSku, barcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },
       include: { category: true },
     });
 

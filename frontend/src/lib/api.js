@@ -54,14 +54,16 @@ export const products = {
   delete:      (id)   => api.delete(`/products/${id}`),
   adjustStock: (id,d) => api.post(`/products/${id}/adjust-stock`, d),
   lowStock:    ()     => api.get('/products/low-stock'),
+  nextSku:     (categoryId) => api.get('/products/next-sku', { params: { categoryId } }),
 };
 
 export const orders = {
   list:         (p)       => api.get('/orders', { params: p }),
   get:          (id)      => api.get(`/orders/${id}`),
   create:       (d)       => api.post('/orders', d),
-  updateStatus: (id,status) => api.put(`/orders/${id}/status`, { status }),
+  updateStatus: (id,status,note) => api.put(`/orders/${id}/status`, { status, note }),
   delete:       (id)      => api.delete(`/orders/${id}`),
+  track:        (orderNumber) => api.get(`/orders/track/${orderNumber}`),
 };
 
 export const customers = {

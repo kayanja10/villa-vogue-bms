@@ -762,6 +762,17 @@ const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove,onCheckout}) => {
 // ── Checkout Modal — places real order to backend ────────────────────────────
 const BASE_API = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
 
+// Major towns, cities, and Kampala suburbs across Uganda — alphabetically sorted, "Other" always last
+const UGANDA_AREAS = [
+  "Arua","Bugiri","Bushenyi","Busia","Entebbe","Fort Portal","Gulu","Hoima",
+  "Iganga","Ishaka","Jinja","Kabale","Kabarole","Kampala (City Centre)",
+  "Kamuli","Kasese","Kayunga","Kitgum","Kololo","Kyengera","Lira","Luweero",
+  "Lyantonde","Masaka","Masindi","Mbale","Mbarara","Mityana","Mpigi",
+  "Mubende","Mukono","Nakawa","Nakasero","Namugongo","Nansana","Njeru",
+  "Ntinda","Ntungamo","Pader","Rukungiri","Soroti","Tororo","Wakiso",
+  "Other (specify below)",
+];
+
 const STEPS = ["Cart Review","Your Details","Payment","Confirm"];
 
 const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemove}) => {
@@ -773,7 +784,8 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
     name: user?.name||user?.fullName||"",
     email: user?.email||"",
     phone: user?.phone||"",
-    address: "",
+    area: "",             // selected major town/city/suburb
+    address: "",          // street/landmark detail, or full address if area==="Other"
     delivery: "pickup",   // pickup | delivery
     payment: "cash",      // cash | mtn_momo | airtel_money | card
     notes: "",
@@ -793,13 +805,18 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
   const placeOrder = async () => {
     setLoading(true);
     try {
+      const isOtherArea = form.area === "Other (specify below)";
+      const fullAddress = form.delivery === "delivery"
+        ? (isOtherArea ? form.address : `${form.area}${form.address ? " — " + form.address : ""}`)
+        : "In-Store Pickup";
       const payload = {
         source: "online",
         customerId: user?.id || null,
         customerName: form.name,
         customerEmail: form.email,
         customerPhone: form.phone,
-        deliveryAddress: form.delivery==="delivery" ? form.address : "In-Store Pickup",
+        deliveryAddress: fullAddress,
+        deliveryArea: form.delivery === "delivery" ? form.area : null,
         deliveryType: form.delivery,
         paymentMethod: form.payment,
         momoNumber: form.momoNumber || undefined,
@@ -934,7 +951,26 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                       ))}
                     </div>
                   </div>
-                  {form.delivery==="delivery"&&inp("Delivery Address","address","text","Kampala, Uganda",true)}
+                  {form.delivery==="delivery"&&(
+                    <>
+                      <div>
+                        <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>
+                          Delivery Area <span style={{color:"var(--gold)"}}>*</span>
+                        </label>
+                        <select className="vi" value={form.area} onChange={e=>setForm(f=>({...f,area:e.target.value}))}
+                          style={{width:"100%",padding:"11px 13px",fontSize:13,cursor:"pointer"}}>
+                          <option value="" disabled>Select your town, city, or area</option>
+                          {UGANDA_AREAS.map(a=><option key={a} value={a}>{a}</option>)}
+                        </select>
+                      </div>
+                      {form.area&&inp(
+                        form.area==="Other (specify below)" ? "Full Address *" : "Landmark / Street (optional)",
+                        "address","text",
+                        form.area==="Other (specify below)" ? "e.g. Plot 12, Main Street, Town" : "e.g. Near Total Petrol Station",
+                        form.area==="Other (specify below)"
+                      )}
+                    </>
+                  )}
                   <div>
                     <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>Order Notes</label>
                     <textarea className="vi" value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))}
@@ -944,7 +980,9 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                   <div style={{display:"flex",gap:10}}>
                     <button className="bgh" onClick={()=>setStep(0)} style={{flex:1,padding:"12px",fontSize:13}}>← Back</button>
                     <motion.button className="bg" onClick={()=>{
-                      if(!form.name||!form.phone||(form.delivery==="delivery"&&!form.address)){toast("Please fill required fields","err","⚠");return;}
+                      if(!form.name||!form.phone){toast("Please fill required fields","err","⚠");return;}
+                      if(form.delivery==="delivery"&&!form.area){toast("Please select a delivery area","err","⚠");return;}
+                      if(form.delivery==="delivery"&&form.area==="Other (specify below)"&&!form.address){toast("Please enter your full address","err","⚠");return;}
                       setStep(2);
                     }} whileTap={{scale:.97}} style={{flex:2,padding:"12px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
                       Continue to Payment <IC n="cr" sz={14}/>
@@ -1026,7 +1064,7 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                     {[
                       {e:"📞",t:"We'll call/WhatsApp you within 30 minutes to confirm"},
                       {e:"💳",t:form.payment!=="cash"?"Complete your MoMo/Airtel payment using the reference above":"Have cash ready for "+( form.delivery==="delivery"?"delivery":"pickup")},
-                      {e:form.delivery==="delivery"?"🚚":"🏪",t:form.delivery==="delivery"?"We'll deliver to "+form.address+" within 1-2 days":"Your order will be ready for pickup in about 1 hour"},
+                      {e:form.delivery==="delivery"?"🚚":"🏪",t:form.delivery==="delivery"?`We'll deliver to ${form.area}${form.address?" — "+form.address:""} within 1-2 days`:"Your order will be ready for pickup in about 1 hour"},
                     ].map((s,i)=>(
                       <div key={i} style={{display:"flex",gap:10,marginBottom:10}}>
                         <span style={{fontSize:18,flexShrink:0}}>{s.e}</span>
@@ -1755,11 +1793,213 @@ const LoginModal = ({open,onClose,onLogin,onStaffLogin}) => {
   );
 };
 
+// Full order status lifecycle with display info — keep in sync with backend ORDER_STATUSES
+const ORDER_STATUS_INFO = {
+  pending:    { label: "Pending",    color: "#f39c12", bg: "rgba(241,196,15,.15)", step: 0, icon: "tag" },
+  confirmed:  { label: "Confirmed",  color: "#2980b9", bg: "rgba(41,128,185,.15)", step: 1, icon: "check" },
+  processing: { label: "Processing",color: "#8e44ad", bg: "rgba(142,68,173,.15)", step: 2, icon: "cog" },
+  received:   { label: "Received",  color: "#16a085", bg: "rgba(22,160,133,.15)", step: 3, icon: "pkg" },
+  delivered:  { label: "Delivered", color: "#27ae60", bg: "rgba(46,204,113,.15)", step: 4, icon: "truck" },
+  completed:  { label: "Completed", color: "#27ae60", bg: "rgba(46,204,113,.15)", step: 4, icon: "check" },
+  cancelled:  { label: "Cancelled", color: "#e74c3c", bg: "rgba(231,76,60,.15)",  step: -1, icon: "x" },
+  voided:     { label: "Voided",    color: "#e74c3c", bg: "rgba(231,76,60,.15)",  step: -1, icon: "x" },
+};
+const STATUS_STEPS = ["pending","confirmed","processing","received","delivered"];
+
+const OrderStatusBadge = ({status}) => {
+  const info = ORDER_STATUS_INFO[status] || ORDER_STATUS_INFO.pending;
+  return (
+    <span style={{fontSize:10,fontWeight:700,padding:"3px 9px",borderRadius:20,background:info.bg,color:info.color,textTransform:"capitalize",whiteSpace:"nowrap"}}>
+      {info.label}
+    </span>
+  );
+};
+
+const OrderStatusStepper = ({status}) => {
+  const info = ORDER_STATUS_INFO[status] || ORDER_STATUS_INFO.pending;
+  if (info.step === -1) {
+    // Cancelled/voided — show as a flat error state, no stepper
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0"}}>
+        <IC n="x" sz={14} c={info.color}/>
+        <span style={{fontSize:12,fontWeight:600,color:info.color}}>{info.label}</span>
+      </div>
+    );
+  }
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:2,padding:"10px 0 4px"}}>
+      {STATUS_STEPS.map((s,i)=>{
+        const stepInfo = ORDER_STATUS_INFO[s];
+        const reached = info.step >= stepInfo.step;
+        return (
+          <React.Fragment key={s}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,flex:1}}>
+              <div style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
+                background:reached?stepInfo.color:"var(--br)",transition:"background .3s"}}>
+                {reached&&<IC n="check" sz={10} c="#fff"/>}
+              </div>
+              <span style={{fontSize:8,color:reached?stepInfo.color:"var(--tm)",fontWeight:reached?700:400,textAlign:"center",letterSpacing:".02em"}}>
+                {stepInfo.label}
+              </span>
+            </div>
+            {i<STATUS_STEPS.length-1&&(
+              <div style={{flex:.6,height:2,marginTop:-14,background:info.step>stepInfo.step?stepInfo.color:"var(--br)",transition:"background .3s"}}/>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+  );
+};
+
+// ── Review/Feedback submission form — posts to the same Feedback table staff see ────
+const FEEDBACK_CATEGORIES = ["Product Quality","Customer Service","Pricing","Delivery","Store Experience","General"];
+
+const ReviewForm = ({orders=[],userName=""}) => {
+  const toast = useToast();
+  const [rating,setRating] = useState(5);
+  const [category,setCategory] = useState("Product Quality");
+  const [comment,setComment] = useState("");
+  const [linkedOrder,setLinkedOrder] = useState("");
+  const [submitting,setSubmitting] = useState(false);
+  const [submitted,setSubmitted] = useState(false);
+
+  const submit = async () => {
+    if (!comment.trim()) { toast("Please write a few words about your experience","err","⚠"); return; }
+    setSubmitting(true);
+    try {
+      // Build the comment with order context inline since the schema has no
+      // separate productName/orderNumber column — keeps the review readable
+      // for staff in the Feedback page without needing a migration
+      const orderTag = linkedOrder ? `[Order ${linkedOrder}] ` : "";
+      const res = await fetch(`${BASE_API}/feedback/public`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: userName || "Anonymous",
+          rating,
+          comment: `${orderTag}${comment.trim()}`,
+          category,
+        }),
+      });
+      if (!res.ok) { const d = await res.json().catch(()=>({})); throw new Error(d.error || "Could not submit review"); }
+      setSubmitted(true);
+      toast("Thank you for your feedback! ✦","ok","★");
+    } catch (e) {
+      toast(e.message || "Could not submit review — please try again","err","⚠");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const resetForm = () => { setSubmitted(false); setRating(5); setComment(""); setLinkedOrder(""); setCategory("Product Quality"); };
+
+  if (submitted) {
+    return (
+      <div style={{textAlign:"center",padding:"30px 0"}}>
+        <div style={{width:54,height:54,borderRadius:"50%",background:"linear-gradient(135deg,var(--gold-d),var(--gold))",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+          <IC n="check" sz={24} c="#000"/>
+        </div>
+        <p style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:300,marginBottom:6}}>Review submitted!</p>
+        <p style={{fontSize:12,color:"var(--tm)",marginBottom:18}}>Thank you for helping us improve Villa Vogue.</p>
+        <button className="bgh" onClick={resetForm} style={{padding:"9px 22px",fontSize:12}}>Write Another Review</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="ll" style={{marginBottom:4}}>Share Your Experience</p>
+      <p style={{fontSize:11,color:"var(--tm)",marginBottom:16}}>Your review helps other customers and goes straight to our team.</p>
+
+      {/* Star rating */}
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:8}}>Your Rating</label>
+        <div style={{display:"flex",gap:6}}>
+          {[1,2,3,4,5].map(r=>(
+            <button key={r} onClick={()=>setRating(r)} style={{background:"none",border:"none",cursor:"pointer",padding:2}}>
+              <IC n="star" sz={26} c={r<=rating?"var(--gold)":"var(--br)"}/>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Link to an order (optional) */}
+      {orders.length>0&&(
+        <div style={{marginBottom:14}}>
+          <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>
+            Which order is this about? <span style={{fontWeight:400,textTransform:"none",letterSpacing:0}}>(optional)</span>
+          </label>
+          <select className="vi" value={linkedOrder} onChange={e=>setLinkedOrder(e.target.value)} style={{width:"100%",padding:"10px 13px",fontSize:13}}>
+            <option value="">General feedback (not order-specific)</option>
+            {orders.map(o=><option key={o.id} value={o.orderNumber||o.id}>#{o.orderNumber||o.id} — UGX {Number(o.total||0).toLocaleString()}</option>)}
+          </select>
+        </div>
+      )}
+
+      {/* Category */}
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>Category</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {FEEDBACK_CATEGORIES.map(c=>(
+            <button key={c} onClick={()=>setCategory(c)}
+              style={{fontSize:11,padding:"6px 12px",borderRadius:50,border:`1.5px solid ${category===c?"var(--gold)":"var(--br)"}`,
+                background:category===c?"rgba(201,168,76,.13)":"transparent",color:category===c?"var(--gold)":"var(--tm)",
+                cursor:"pointer",fontWeight:600,transition:"all .2s"}}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Comment */}
+      <div style={{marginBottom:18}}>
+        <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>Your Review</label>
+        <textarea className="vi" value={comment} onChange={e=>setComment(e.target.value)} rows={4}
+          placeholder="Tell us about your experience — quality, service, delivery, anything!"
+          style={{width:"100%",padding:"11px 13px",fontSize:13,resize:"vertical"}}/>
+      </div>
+
+      <motion.button className="bg" onClick={submit} disabled={submitting} whileTap={{scale:.97}}
+        style={{width:"100%",padding:"12px",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:submitting?.7:1}}>
+        {submitting
+          ? <><span style={{width:14,height:14,border:"2px solid rgba(0,0,0,.3)",borderTopColor:"#000",borderRadius:"50%",display:"inline-block",animation:"spin 1s linear infinite"}}/> Submitting…</>
+          : <><IC n="star" sz={14}/> Submit Review</>
+        }
+      </motion.button>
+    </div>
+  );
+};
+
 const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
+  // Local copy of orders that can be live-updated via socket when staff changes status —
+  // without this, the customer would need to close/reopen the drawer to see updates
+  const [liveOrders,setLiveOrders] = useState(orders);
+  useEffect(()=>{ setLiveOrders(orders); },[orders]);
+
+  // Listen for real-time status changes broadcast from the staff dashboard
+  useEffect(()=>{
+    const socket = window.__vv_socket || window.socket;
+    if(!socket) return;
+    const handler = (update) => {
+      setLiveOrders(prev => prev.map(o =>
+        (o.id===update.orderId || o.orderNumber===update.orderNumber)
+          ? { ...o, orderStatus: update.status }
+          : o
+      ));
+    };
+    socket.on('order:status-public', handler);
+    socket.on('order:status-changed', handler);
+    return () => {
+      socket.off('order:status-public', handler);
+      socket.off('order:status-changed', handler);
+    };
+  },[]);
+
   const [tab,setTab]=useState("overview");
   const tabs=[
     {k:"overview",l:"Overview",i:"user"},{k:"orders",l:"Orders",i:"pkg"},
-    {k:"loyalty",l:"Rewards",i:"award"},{k:"settings",l:"Settings",i:"cog"},
+    {k:"loyalty",l:"Rewards",i:"award"},{k:"reviews",l:"Reviews",i:"star"},{k:"settings",l:"Settings",i:"cog"},
   ];
   const pts=user?.loyaltyPoints||user?.loyalty_points||0;
   const tier=pts>=50000?"VIP ✦":pts>=20000?"Platinum":pts>=5000?"Gold":pts>=1000?"Silver":"Bronze";
@@ -1805,17 +2045,17 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
               </div>
 
               {/* Tabs */}
-              <div style={{display:"flex",gap:5}}>
+              <div style={{display:"flex",gap:4,overflowX:"auto",paddingBottom:1}}>
                 {tabs.map(t=>(
                   <button key={t.k}
                     onClick={(e)=>{ e.stopPropagation(); setTab(t.k); }}
-                    style={{flex:1,padding:"8px 4px",borderRadius:9,border:`1.5px solid ${tab===t.k?"var(--gold)":"var(--br)"}`,
+                    style={{flex:"1 0 auto",minWidth:56,padding:"7px 3px",borderRadius:9,border:`1.5px solid ${tab===t.k?"var(--gold)":"var(--br)"}`,
                       background:tab===t.k?"rgba(201,168,76,.13)":"transparent",
                       color:tab===t.k?"var(--gold)":"var(--tm)",
-                      fontSize:10,fontWeight:700,cursor:"pointer",
-                      display:"flex",flexDirection:"column",alignItems:"center",gap:3,
-                      transition:"all .2s"}}>
-                    <IC n={t.i} sz={13}/>
+                      fontSize:9,fontWeight:700,cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",gap:2,
+                      transition:"all .2s",whiteSpace:"nowrap"}}>
+                    <IC n={t.i} sz={12}/>
                     {t.l}
                   </button>
                 ))}
@@ -1830,7 +2070,7 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
                   <motion.div key="overview" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
                     <div style={{display:"flex",flexDirection:"column",gap:12}}>
                       {[
-                        {l:"Total Orders",v:orders.length||0,i:"pkg",c:"var(--gold)"},
+                        {l:"Total Orders",v:liveOrders.length||0,i:"pkg",c:"var(--gold)"},
                         {l:"Loyalty Points",v:`${pts.toLocaleString()} pts`,i:"award",c:"var(--gold)"},
                         {l:"Current Tier",v:tier,i:"star",c:tierColor},
                         {l:"Member Since",v:user?.createdAt?new Date(user.createdAt).getFullYear():"2025",i:"calendar",c:"var(--tm)"},
@@ -1851,26 +2091,22 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
                 {tab==="orders"&&(
                   <motion.div key="orders" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
                     <p className="ll" style={{marginBottom:14}}>Order History</p>
-                    {orders.length===0?(
+                    {liveOrders.length===0?(
                       <div style={{textAlign:"center",padding:"36px 0"}}>
                         <div style={{fontSize:36,marginBottom:12,opacity:.3}}>📦</div>
                         <p style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:300,marginBottom:6}}>No orders yet</p>
                         <p style={{fontSize:12,color:"var(--tm)",marginBottom:16}}>Your order history will appear here</p>
                         <button className="bg" onClick={onClose} style={{padding:"10px 24px",fontSize:13}}>Start Shopping</button>
                       </div>
-                    ):orders.map(o=>(
+                    ):liveOrders.map(o=>(
                       <div key={o.id} style={{padding:13,background:"var(--bc)",border:"1px solid var(--br)",borderRadius:13,marginBottom:10}}>
                         <div style={{display:"flex",justifyContent:"space-between",marginBottom:5,alignItems:"center"}}>
                           <span style={{fontSize:13,fontWeight:600}}>#{o.orderNumber||o.id}</span>
-                          <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:20,
-                            background:o.orderStatus==="completed"?"rgba(46,204,113,.15)":o.orderStatus==="pending"?"rgba(241,196,15,.15)":"rgba(231,76,60,.15)",
-                            color:o.orderStatus==="completed"?"#27ae60":o.orderStatus==="pending"?"#f39c12":"#e74c3c",
-                            textTransform:"capitalize"}}>
-                            {o.orderStatus||o.status||"pending"}
-                          </span>
+                          <OrderStatusBadge status={o.orderStatus||o.status||"pending"}/>
                         </div>
                         <p style={{fontSize:11,color:"var(--tm)",marginBottom:4}}>{o.createdAt?new Date(o.createdAt).toLocaleDateString("en-UG",{day:"numeric",month:"short",year:"numeric"}):"—"}</p>
-                        <p style={{fontSize:14,color:"var(--gold)",fontWeight:700}}>UGX {Number(o.total||o.totalAmount||0).toLocaleString()}</p>
+                        <p style={{fontSize:14,color:"var(--gold)",fontWeight:700,marginBottom:2}}>UGX {Number(o.total||o.totalAmount||0).toLocaleString()}</p>
+                        <OrderStatusStepper status={o.orderStatus||o.status||"pending"}/>
                       </div>
                     ))}
                   </motion.div>
@@ -1893,6 +2129,12 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
                       </div>
                     ))}
                     <p style={{fontSize:12,color:"var(--tm)",lineHeight:1.7,marginTop:14}}>Earn 1 point per UGX 1,000 spent. Redeem for discounts and exclusive perks.</p>
+                  </motion.div>
+                )}
+
+                {tab==="reviews"&&(
+                  <motion.div key="reviews" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
+                    <ReviewForm orders={liveOrders} userName={user?.name||user?.fullName||""}/>
                   </motion.div>
                 )}
 

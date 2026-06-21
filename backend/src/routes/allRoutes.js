@@ -382,7 +382,6 @@ const feedbackRouter = makeRouter((r) => {
   r.get('/public-stats', async (req, res) => {
     try {
       const allFeedback = await prisma.feedback.findMany({
-        where: { isVisible: true },
         select: { rating: true },
       });
       const total = allFeedback.length;
@@ -399,27 +398,30 @@ const feedbackRouter = makeRouter((r) => {
   r.get('/public', async (req, res) => {
     try {
       const feedbackList = await prisma.feedback.findMany({
-        where: { isVisible: true },
         orderBy: { createdAt: 'desc' },
         take: 12,
-        select: { id: true, customerName: true, rating: true, message: true, createdAt: true },
+        select: { id: true, customerName: true, rating: true, comment: true, category: true, createdAt: true },
       });
       res.json({ feedback: feedbackList, total: feedbackList.length });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
   // POST /api/feedback/public  — no auth, customer portal review submissions
+  // FIX: schema field is 'comment' — there is no 'message', 'source', or 'isVisible'
+  // column on the Feedback model. The old code referenced fields that don't exist
+  // in schema.prisma, which made every public feedback submission throw a Prisma
+  // "Unknown argument" error silently caught by the try/catch (500 response).
   r.post('/public', async (req, res) => {
     try {
-      const { name, rating, message } = req.body;
-      if (!message?.trim()) return res.status(400).json({ error: 'Message required' });
+      const { name, rating, message, comment, category } = req.body;
+      const text = (comment || message || '').trim();
+      if (!text) return res.status(400).json({ error: 'Comment is required' });
       const fb = await prisma.feedback.create({
         data: {
           customerName: name || 'Anonymous',
           rating: parseInt(rating) || 5,
-          message: message.trim(),
-          source: 'portal',
-          isVisible: true,
+          comment: text,
+          category: category || 'General',
         },
       });
       res.status(201).json(fb);
@@ -448,10 +450,20 @@ const feedbackRouter = makeRouter((r) => {
   });
 
   // POST /api/feedback  — staff manually adding feedback
-  r.post('/', async (req, res) => {
-    const { customerId, customerName, rating, comment, category } = req.body;
-    const fb = await prisma.feedback.create({ data: { customerId: customerId ? parseInt(customerId) : null, customerName, rating: parseInt(rating), comment, category } });
-    res.status(201).json(fb);
+  r.post('/', authenticate, async (req, res) => {
+    try {
+      const { customerId, customerName, rating, comment, category } = req.body;
+      const fb = await prisma.feedback.create({
+        data: {
+          customerId: customerId ? parseInt(customerId) : null,
+          customerName: customerName || 'Anonymous',
+          rating: parseInt(rating) || 5,
+          comment: comment || '',
+          category: category || 'General',
+        },
+      });
+      res.status(201).json(fb);
+    } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
 });

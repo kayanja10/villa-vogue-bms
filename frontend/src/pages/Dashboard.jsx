@@ -8,7 +8,7 @@ import {
   ShoppingCart, Phone, Truck, X,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { analytics, ai, notifications } from '../lib/api';
+import { analytics, ai, notifications, orders as ordersApi } from '../lib/api';
 import { useStore } from '../store/useStore';
 import { format } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -54,6 +54,46 @@ function OnlineOrderBanner({ order, onDismiss }) {
       <button onClick={onDismiss} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,.6)', padding: 4, flexShrink: 0 }}>
         <X size={16} />
       </button>
+    </div>
+  );
+}
+
+// ── Pending Orders Popup — shown once when dashboard loads if orders are waiting ────
+function PendingOrdersPopup({ orders, onClose, onDismissForSession }) {
+  if (!orders.length) return null;
+  const shown = orders.slice(0, 2); // show at most 2, per the request
+  const extra = orders.length - shown.length;
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-5 text-white text-center">
+          <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-2">
+            <Bell size={22} />
+          </div>
+          <h3 className="font-heading text-lg font-bold">
+            {orders.length} Order{orders.length > 1 ? 's' : ''} Pending
+          </h3>
+          <p className="text-xs text-white/80 mt-0.5">Waiting for confirmation</p>
+        </div>
+        <div className="p-4 space-y-2 max-h-60 overflow-y-auto">
+          {shown.map(o => (
+            <div key={o.id} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">{o.orderNumber}</p>
+                <p className="text-xs text-gray-500">{o.customerName || 'Customer'} · UGX {Number(o.total).toLocaleString()}</p>
+              </div>
+              <span className={`badge text-[10px] ${o.orderSource === 'online' ? 'badge-blue' : 'badge-gray'}`}>{o.orderSource === 'online' ? '🛒 Online' : '🏪 POS'}</span>
+            </div>
+          ))}
+          {extra > 0 && <p className="text-xs text-center text-gray-400">+{extra} more pending order{extra > 1 ? 's' : ''}</p>}
+        </div>
+        <div className="p-4 pt-0 flex gap-2">
+          <button onClick={onDismissForSession} className="btn-secondary flex-1 justify-center text-sm">Dismiss</button>
+          <Link to="/orders" className="flex-1" onClick={onClose}>
+            <button className="btn-primary w-full justify-center text-sm">Review Orders</button>
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
@@ -127,6 +167,30 @@ export default function Dashboard() {
   const [showAI, setShowAI] = useState(false);
   // Online order notifications queue
   const [onlineAlerts, setOnlineAlerts] = useState([]);
+
+  // ── Pending orders popup — checked once per browser session on load ────────
+  const [showPendingPopup, setShowPendingPopup] = useState(false);
+  const { data: pendingOrdersData } = useQuery({
+    queryKey: ['pending-orders-check'],
+    queryFn: () => ordersApi.list({ status: 'pending', limit: 10 }).then(r => r.data),
+    staleTime: 60000,
+  });
+  const pendingOrders = pendingOrdersData?.orders || [];
+
+  useEffect(() => {
+    if (!pendingOrders.length) return;
+    // Only show once per browser session — avoids nagging on every page visit
+    const dismissedKey = 'vv_pending_popup_dismissed';
+    const alreadyDismissed = sessionStorage.getItem(dismissedKey);
+    if (!alreadyDismissed) {
+      setShowPendingPopup(true);
+    }
+  }, [pendingOrders.length]);
+
+  const dismissPendingPopupForSession = () => {
+    sessionStorage.setItem('vv_pending_popup_dismissed', '1');
+    setShowPendingPopup(false);
+  };
 
   // ── Listen for online orders via Socket.IO ──────────────────────────────
   useEffect(() => {
@@ -223,6 +287,15 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4 animate-fade-in">
+
+      {/* ── Pending Orders Popup (shown once per session if orders are waiting) ── */}
+      {showPendingPopup && (
+        <PendingOrdersPopup
+          orders={pendingOrders}
+          onClose={() => setShowPendingPopup(false)}
+          onDismissForSession={dismissPendingPopupForSession}
+        />
+      )}
 
       {/* ── Online Order Alerts (real-time) ── */}
       {onlineAlerts.length > 0 && (

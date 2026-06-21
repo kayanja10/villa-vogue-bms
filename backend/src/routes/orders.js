@@ -198,12 +198,71 @@ router.post('/', optionalAuth, async (req, res) => {
   }
 });
 
+// Valid order statuses across the full lifecycle
+const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'received', 'delivered', 'completed', 'cancelled', 'voided'];
+
 // PUT /api/orders/:id/status
 router.put('/:id/status', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
-    const { status } = req.body;
-    const order = await prisma.order.update({ where: { id: parseInt(req.params.id) }, data: { orderStatus: status } });
+    const { status, note } = req.body;
+    if (!ORDER_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${ORDER_STATUSES.join(', ')}` });
+    }
+
+    const order = await prisma.order.update({
+      where: { id: parseInt(req.params.id) },
+      data: { orderStatus: status },
+    });
+
+    // Log who changed the status and when (for audit trail)
+    await prisma.activityLog.create({
+      data: {
+        userId: req.user.id, username: req.user.username,
+        action: 'update_order_status', entityType: 'order', entityId: String(order.id),
+        details: JSON.stringify({ orderNumber: order.orderNumber, newStatus: status, note: note || null }),
+      },
+    }).catch(() => {});
+
+    // Notify staff dashboards (existing behaviour)
     global.io?.emit('order:updated', order);
+
+    // 🔔 Notify the specific customer who placed this order — so it reflects on their side
+    if (order.customerId) {
+      global.io?.to(`customer:${order.customerId}`).emit('order:status-changed', {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status,
+        note: note || null,
+        updatedAt: new Date(),
+      });
+    }
+    // Also broadcast a generic event with order number so the portal can match
+    // by orderNumber even for guest customers (no customerId) tracking by number
+    global.io?.emit('order:status-public', {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      status,
+      updatedAt: new Date(),
+    });
+
+    res.json(order);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/orders/track/:orderNumber — public order tracking (no auth needed)
+// Lets a guest customer check their order status using just the order number
+router.get('/track/:orderNumber', async (req, res) => {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { orderNumber: req.params.orderNumber },
+      select: {
+        orderNumber: true, orderStatus: true, paymentStatus: true,
+        total: true, createdAt: true, customerName: true, notes: true,
+      },
+    });
+    if (!order) return res.status(404).json({ error: 'Order not found. Check your order number and try again.' });
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });

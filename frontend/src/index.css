@@ -156,6 +156,15 @@
 }
 @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 
+/* Side panel slide-in (Orders detail panel) */
+@keyframes slide-in-right {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.25s ease-out;
+}
+
 /* POS specific */
 .pos-product-card {
   @apply cursor-pointer rounded-xl border-2 border-transparent hover:border-[#C9A96E] transition-all duration-150 hover:shadow-lg active:scale-95;

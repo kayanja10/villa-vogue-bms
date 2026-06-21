@@ -7,7 +7,8 @@ import {
   ClipboardList, BookOpen, UserCircle, Settings as SettingsIcon,
   CheckCircle, XCircle, Lock, Unlock, Key, Upload, Image as ImgIcon,
   MessageCircle, RefreshCw, Star, Bell, TrendingUp, Clock, ChevronDown,
-  Send, Printer, Phone, Mail, MapPin, Calendar, Filter
+  Send, Printer, Phone, Mail, MapPin, Calendar, Filter, GripVertical,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
@@ -63,13 +64,26 @@ function Loader() {
 
 // ─── ORDERS ────────────────────────────────────────────────────
 export function Orders() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [status, setStatus] = useState('');
+  const [statusNote, setStatusNote] = useState('');
   const { data, isLoading } = useQuery({
     queryKey: ['orders', search, page, status],
     queryFn: () => apiLib.orders.list({ search, page, limit: 20, status }).then(r => r.data),
+  });
+
+  const updateStatusMut = useMutation({
+    mutationFn: ({ id, newStatus, note }) => apiLib.orders.updateStatus(id, newStatus, note),
+    onSuccess: (res) => {
+      toast.success('Order status updated — customer will see this update');
+      setSelected(res.data);
+      setStatusNote('');
+      qc.invalidateQueries(['orders']);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to update status'),
   });
 
   const printReceipt = (order) => {
@@ -106,16 +120,41 @@ export function Orders() {
     window.open(`https://wa.me/${intl}?text=${msg}`, '_blank');
   };
 
+  // Full order lifecycle — matches backend ORDER_STATUSES in routes/orders.js
+  const STATUS_FLOW = [
+    { k: 'pending',    l: 'Pending',    color: '#f39c12', icon: Clock },
+    { k: 'confirmed',  l: 'Confirmed',  color: '#2980b9', icon: CheckCircle },
+    { k: 'processing', l: 'Processing', color: '#8e44ad', icon: RefreshCw },
+    { k: 'received',   l: 'Received',   color: '#16a085', icon: Package },
+    { k: 'delivered',  l: 'Delivered',  color: '#27ae60', icon: Truck },
+  ];
+  const statusInfo = (s) => STATUS_FLOW.find(x => x.k === s) || (s === 'completed' ? { k:'completed', l:'Completed', color:'#27ae60', icon: CheckCircle } : { k: s || 'pending', l: (s||'pending'), color: '#999', icon: Clock });
+
+  const pendingOnlineCount = data?.orders?.filter(o => o.orderSource === 'online' && o.orderStatus === 'pending').length || 0;
+
   return (
-    <Page title="Orders" subtitle={`${data?.total || 0} total`} icon={FileText}
+    <Page title="Orders" subtitle={`${data?.total || 0} total${pendingOnlineCount ? ` · ${pendingOnlineCount} online order${pendingOnlineCount>1?'s':''} need attention` : ''}`} icon={FileText}
       action={<>
-        <select className="input py-2 text-sm w-36" value={status} onChange={e => setStatus(e.target.value)}>
+        <select className="input py-2 text-sm w-40" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="">All Status</option>
-          <option value="completed">Completed</option>
           <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="processing">Processing</option>
+          <option value="received">Received</option>
+          <option value="delivered">Delivered</option>
+          <option value="completed">Completed</option>
+          <option value="cancelled">Cancelled</option>
           <option value="voided">Voided</option>
         </select>
       </>}>
+
+      {pendingOnlineCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3.5 flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0"><Bell size={16} className="text-white"/></div>
+          <p className="text-sm text-amber-800 dark:text-amber-300"><strong>{pendingOnlineCount} online order{pendingOnlineCount>1?'s':''}</strong> {pendingOnlineCount>1?'are':'is'} waiting for confirmation. Click to review and update status.</p>
+        </div>
+      )}
+
       <div className="card">
         <div className="p-4 border-b border-gray-100 dark:border-gray-800">
           <div className="relative"><Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"/>
@@ -123,26 +162,34 @@ export function Orders() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50"><tr>{['Order #','Customer','Items','Total','Payment','Status','Date','Actions'].map(h=><th key={h} className="table-header">{h}</th>)}</tr></thead>
+            <thead className="bg-gray-50 dark:bg-gray-800/50"><tr>{['Order #','Source','Customer','Items','Total','Payment','Status','Date',''].map(h=><th key={h} className="table-header">{h}</th>)}</tr></thead>
             <tbody>
-              {data?.orders?.map(o => (
-                <tr key={o.id} className="table-row">
-                  <td className="table-cell font-mono font-semibold text-[#A8824A] text-xs">{o.orderNumber}</td>
-                  <td className="table-cell text-sm">{o.customerName||<span className="text-gray-400 italic">Walk-in</span>}</td>
-                  <td className="table-cell text-sm">{(() => { try { return JSON.parse(o.items).length; } catch { return '?'; } })()} items</td>
-                  <td className="table-cell font-semibold text-sm">UGX {Number(o.total).toLocaleString()}</td>
-                  <td className="table-cell"><span className="badge-gold capitalize text-xs">{o.paymentMethod?.replace(/_/g,' ')}</span></td>
-                  <td className="table-cell"><span className={`badge capitalize text-xs ${o.orderStatus==='completed'?'badge-green':o.orderStatus==='voided'?'badge-red':'badge-yellow'}`}>{o.orderStatus}</span></td>
-                  <td className="table-cell text-xs text-gray-400">{o.createdAt?format(new Date(o.createdAt),'MMM d, HH:mm'):'—'}</td>
-                  <td className="table-cell">
-                    <div className="flex gap-1">
-                      <button onClick={() => setSelected(o)} className="btn-ghost py-1 px-2" title="View"><Eye size={13}/></button>
-                      <button onClick={() => printReceipt(o)} className="btn-ghost py-1 px-2" title="Print"><Printer size={13}/></button>
-                      {o.customerPhone && <button onClick={() => whatsapp(o)} className="btn-ghost py-1 px-2 text-green-600" title="WhatsApp"><MessageCircle size={13}/></button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {data?.orders?.map(o => {
+                const si = statusInfo(o.orderStatus);
+                return (
+                  <tr key={o.id} className={`table-row cursor-pointer ${o.orderSource==='online'&&o.orderStatus==='pending'?'bg-amber-50/50 dark:bg-amber-900/10':''}`} onClick={() => setSelected(o)}>
+                    <td className="table-cell font-mono font-semibold text-[#A8824A] text-xs">{o.orderNumber}</td>
+                    <td className="table-cell"><span className={`badge text-xs ${o.orderSource==='online'?'badge-blue':'badge-gray'}`}>{o.orderSource==='online'?'🛒 Online':'🏪 POS'}</span></td>
+                    <td className="table-cell text-sm">{o.customerName||<span className="text-gray-400 italic">Walk-in</span>}</td>
+                    <td className="table-cell text-sm">{(() => { try { return JSON.parse(o.items).length; } catch { return '?'; } })()} items</td>
+                    <td className="table-cell font-semibold text-sm">UGX {Number(o.total).toLocaleString()}</td>
+                    <td className="table-cell"><span className="badge-gold capitalize text-xs">{o.paymentMethod?.replace(/_/g,' ')}</span></td>
+                    <td className="table-cell">
+                      <span className="badge capitalize text-xs" style={{ background: `${si.color}22`, color: si.color }}>
+                        <si.icon size={10} className="inline mr-0.5"/> {si.l}
+                      </span>
+                    </td>
+                    <td className="table-cell text-xs text-gray-400">{o.createdAt?format(new Date(o.createdAt),'MMM d, HH:mm'):'—'}</td>
+                    <td className="table-cell">
+                      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setSelected(o)} className="btn-ghost py-1 px-2" title="View & Update Status"><Eye size={13}/></button>
+                        <button onClick={() => printReceipt(o)} className="btn-ghost py-1 px-2" title="Print"><Printer size={13}/></button>
+                        {o.customerPhone && <button onClick={() => whatsapp(o)} className="btn-ghost py-1 px-2 text-green-600" title="WhatsApp"><MessageCircle size={13}/></button>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -159,28 +206,92 @@ export function Orders() {
         )}
       </div>
 
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={`Order ${selected?.orderNumber}`}>
-        {selected && (
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              <div><p className="text-xs text-gray-500">Customer</p><p className="font-medium">{selected.customerName||'Walk-in'}</p></div>
-              <div><p className="text-xs text-gray-500">Phone</p><p className="font-medium">{selected.customerPhone||'—'}</p></div>
-              <div><p className="text-xs text-gray-500">Payment</p><p className="font-medium capitalize">{selected.paymentMethod?.replace(/_/g,' ')}</p></div>
-              <div><p className="text-xs text-gray-500">Date</p><p className="font-medium">{selected.createdAt?format(new Date(selected.createdAt),'MMM d yyyy, HH:mm'):'—'}</p></div>
+      {/* ── Sliding side panel — click any order to open ── */}
+      {selected && (
+        <>
+          <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSelected(null)} />
+          <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white dark:bg-gray-900 shadow-2xl z-50 overflow-y-auto animate-slide-in-right">
+            <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800 p-5 flex items-center justify-between z-10">
+              <div>
+                <p className="text-xs text-gray-400 font-mono">{selected.orderNumber}</p>
+                <h3 className="font-heading text-lg font-semibold">{selected.customerName || 'Walk-in Customer'}</h3>
+              </div>
+              <button onClick={() => setSelected(null)} className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400"><X size={18}/></button>
             </div>
-            <div className="border-t dark:border-gray-800 pt-3">
-              <p className="font-semibold mb-2">Items</p>
-              {(() => { try { return JSON.parse(selected.items).map((i,idx) => (<div key={idx} className="flex justify-between py-1 border-b border-gray-50 dark:border-gray-800"><span>{i.name} × {i.quantity}</span><span className="font-medium">UGX {(i.price*i.quantity).toLocaleString()}</span></div>)); } catch { return null; } })()}
-            </div>
-            {selected.discount > 0 && <div className="flex justify-between text-green-600"><span>Discount</span><span>-UGX {Number(selected.discount).toLocaleString()}</span></div>}
-            <div className="flex justify-between font-bold text-base border-t dark:border-gray-800 pt-2"><span>Total</span><span className="text-[#A8824A]">UGX {Number(selected.total).toLocaleString()}</span></div>
-            <div className="flex gap-2 pt-2">
-              <button onClick={() => printReceipt(selected)} className="btn-secondary flex-1 justify-center"><Printer size={15}/> Print</button>
-              {selected.customerPhone && <button onClick={() => whatsapp(selected)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-medium text-sm"><MessageCircle size={15}/> WhatsApp</button>}
+
+            <div className="p-5 space-y-5">
+              {/* Source + basic info */}
+              <div className="flex items-center gap-2">
+                <span className={`badge text-xs ${selected.orderSource==='online'?'badge-blue':'badge-gray'}`}>{selected.orderSource==='online'?'🛒 Online Order':'🏪 In-Store (POS)'}</span>
+                <span className="text-xs text-gray-400">{selected.createdAt?format(new Date(selected.createdAt),'MMM d yyyy, HH:mm'):'—'}</span>
+              </div>
+
+              {/* ── Status Stepper — click any stage to update ── */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Order Status</p>
+                {['cancelled','voided'].includes(selected.orderStatus) ? (
+                  <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 flex items-center gap-2">
+                    <XCircle size={16} className="text-red-500"/>
+                    <span className="text-sm font-medium text-red-700 dark:text-red-400 capitalize">{selected.orderStatus}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    {STATUS_FLOW.map((s, i) => {
+                      const currentIdx = STATUS_FLOW.findIndex(x => x.k === selected.orderStatus);
+                      const reachedIdx = selected.orderStatus === 'completed' ? STATUS_FLOW.length - 1 : currentIdx;
+                      const reached = i <= reachedIdx;
+                      const isCurrent = i === reachedIdx;
+                      return (
+                        <React.Fragment key={s.k}>
+                          <button
+                            onClick={() => updateStatusMut.mutate({ id: selected.id, newStatus: s.k, note: statusNote })}
+                            disabled={updateStatusMut.isPending}
+                            className="flex flex-col items-center gap-1 flex-1 group"
+                            title={`Mark as ${s.l}`}>
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center transition-all ${reached ? '' : 'bg-gray-100 dark:bg-gray-800'} ${isCurrent ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900' : ''} group-hover:scale-110`}
+                              style={reached ? { background: s.color, ringColor: s.color } : {}}>
+                              <s.icon size={15} className={reached ? 'text-white' : 'text-gray-400'} />
+                            </div>
+                            <span className={`text-[10px] font-semibold ${reached ? '' : 'text-gray-400'}`} style={reached ? { color: s.color } : {}}>{s.l}</span>
+                          </button>
+                          {i < STATUS_FLOW.length - 1 && (
+                            <div className="flex-1 h-0.5 -mt-4" style={{ background: i < reachedIdx ? s.color : '#e5e7eb' }} />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
+                )}
+                <input className="input text-xs mt-3" placeholder="Optional note (e.g. 'Out for delivery via rider John')" value={statusNote} onChange={e => setStatusNote(e.target.value)} />
+                <p className="text-[11px] text-gray-400 mt-1.5">💡 Customer sees this update instantly on their account page</p>
+                <div className="flex gap-2 mt-2">
+                  <button onClick={() => updateStatusMut.mutate({ id: selected.id, newStatus: 'cancelled', note: statusNote })} disabled={updateStatusMut.isPending} className="text-xs text-red-500 hover:text-red-700 font-medium">Cancel this order</button>
+                </div>
+              </div>
+
+              {/* Customer details */}
+              <div className="grid grid-cols-2 gap-3 text-sm border-t border-gray-100 dark:border-gray-800 pt-4">
+                <div><p className="text-xs text-gray-500">Phone</p><p className="font-medium">{selected.customerPhone||'—'}</p></div>
+                <div><p className="text-xs text-gray-500">Payment</p><p className="font-medium capitalize">{selected.paymentMethod?.replace(/_/g,' ')}</p></div>
+                <div className="col-span-2"><p className="text-xs text-gray-500">Notes / Delivery Info</p><p className="font-medium text-xs">{selected.notes || '—'}</p></div>
+              </div>
+
+              {/* Items */}
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-4">
+                <p className="font-semibold mb-2 text-sm">Items</p>
+                {(() => { try { return JSON.parse(selected.items).map((i,idx) => (<div key={idx} className="flex justify-between py-1.5 border-b border-gray-50 dark:border-gray-800 text-sm"><span>{i.name} × {i.quantity}</span><span className="font-medium">UGX {(i.price*i.quantity).toLocaleString()}</span></div>)); } catch { return null; } })()}
+              </div>
+              {selected.discount > 0 && <div className="flex justify-between text-green-600 text-sm"><span>Discount</span><span>-UGX {Number(selected.discount).toLocaleString()}</span></div>}
+              <div className="flex justify-between font-bold text-base border-t border-gray-100 dark:border-gray-800 pt-3"><span>Total</span><span className="text-[#A8824A]">UGX {Number(selected.total).toLocaleString()}</span></div>
+
+              <div className="flex gap-2 pt-2 pb-4">
+                <button onClick={() => printReceipt(selected)} className="btn-secondary flex-1 justify-center"><Printer size={15}/> Print</button>
+                {selected.customerPhone && <button onClick={() => whatsapp(selected)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-medium text-sm"><MessageCircle size={15}/> WhatsApp</button>}
+              </div>
             </div>
           </div>
-        )}
-      </Modal>
+        </>
+      )}
     </Page>
   );
 }
@@ -192,12 +303,11 @@ export function Inventory() {
   const [showAdd, setShowAdd] = useState(false);
   const [editProd, setEditProd] = useState(null);
   const [adjustProd, setAdjustProd] = useState(null);
+  const [previewProd, setPreviewProd] = useState(null);
   const [form, setForm] = useState({ name:'', price:'', costPrice:'', stock:'', categoryId:'', description:'', sku:'', lowStockThreshold:'5' });
   const [adjustForm, setAdjustForm] = useState({ type:'in', quantity:'', reason:'' });
-  const [imageFile, setImageFile] = useState(null);
-  const [imageUrl, setImageUrl] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef();
+  const [images, setImages] = useState([]); // [{url, label, isPrimary}]
+  const [skuLoading, setSkuLoading] = useState(false);
 
   const { data } = useQuery({ queryKey: ['products', search], queryFn: () => apiLib.products.list({ search, limit: 200 }).then(r => r.data) });
   const { data: cats } = useQuery({ queryKey: ['categories'], queryFn: () => apiLib.categories.list().then(r => r.data) });
@@ -205,23 +315,26 @@ export function Inventory() {
 
   const ff = (k,v) => setForm(p => ({...p,[k]:v}));
 
+  // Auto-fetch the next SKU when opening "Add Product" or changing category
+  const fetchNextSku = async (categoryId) => {
+    setSkuLoading(true);
+    try {
+      const res = await apiLib.products.nextSku?.(categoryId) ?? { data: { sku: '' } };
+      if (res?.data?.sku) ff('sku', res.data.sku);
+    } catch { /* SKU stays blank — backend will auto-generate on save anyway */ }
+    finally { setSkuLoading(false); }
+  };
+
+  const openAdd = () => {
+    setForm({ name:'', price:'', costPrice:'', stock:'', categoryId:'', description:'', sku:'', lowStockThreshold:'5' });
+    setImages([]);
+    setShowAdd(true);
+    fetchNextSku('');
+  };
+
   const createProd = useMutation({
-    mutationFn: async (d) => {
-      let images = [];
-      if (imageFile) {
-        setUploading(true);
-        try {
-          const res = await apiLib.uploads.image(imageFile);
-          images = [res.data.url];
-          if (res.data.fallback) toast('Image stored locally (set up Cloudinary for cloud storage)', { icon: 'ℹ️' });
-        } catch { toast.error('Image upload failed'); }
-        finally { setUploading(false); }
-      } else if (imageUrl.trim()) {
-        images = [imageUrl.trim()];
-      }
-      return apiLib.products.create({ ...d, images });
-    },
-    onSuccess: () => { toast.success('Product created!'); setShowAdd(false); setForm({name:'',price:'',costPrice:'',stock:'',categoryId:'',description:'',sku:'',lowStockThreshold:'5'}); setImageFile(null); setImageUrl(''); qc.invalidateQueries(['products']); },
+    mutationFn: (d) => apiLib.products.create({ ...d, images }),
+    onSuccess: () => { toast.success('Product created!'); setShowAdd(false); setForm({name:'',price:'',costPrice:'',stock:'',categoryId:'',description:'',sku:'',lowStockThreshold:'5'}); setImages([]); qc.invalidateQueries(['products']); },
     onError: e => toast.error(e.response?.data?.error||'Failed to create'),
   });
 
@@ -242,16 +355,29 @@ export function Inventory() {
     onError: e => toast.error(e.response?.data?.error||'Failed'),
   });
 
+  const parseProductImages = (p) => {
+    try {
+      const parsed = JSON.parse(p.images || '[]');
+      return parsed.map((i, idx) => typeof i === 'string'
+        ? { url: i, label: 'Front', isPrimary: idx === 0 }
+        : { ...i, isPrimary: i.isPrimary || idx === 0 }
+      );
+    } catch { return []; }
+  };
+
   const openEdit = (p) => {
     setEditProd(p);
-    const imgs = (() => { try { return JSON.parse(p.images||'[]'); } catch { return []; } })();
-    setImageUrl(imgs[0]||'');
+    setImages(parseProductImages(p));
     setForm({ name:p.name, price:p.price, costPrice:p.costPrice||'', stock:p.stock, categoryId:p.categoryId||'', description:p.description||'', sku:p.sku||'', lowStockThreshold:p.lowStockThreshold||5 });
   };
 
+  const margin = form.price && form.costPrice
+    ? (((parseFloat(form.price)-parseFloat(form.costPrice))/parseFloat(form.price))*100).toFixed(1)
+    : null;
+
   return (
     <Page title="Inventory" subtitle={`${data?.total||0} products`} icon={Package}
-      action={<button onClick={() => setShowAdd(true)} className="btn-primary"><Plus size={16}/> Add Product</button>}>
+      action={<button onClick={openAdd} className="btn-primary"><Plus size={16}/> Add Product</button>}>
 
       {/* Valuation strip */}
       {valuation && (
@@ -272,21 +398,31 @@ export function Inventory() {
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 dark:bg-gray-800/50"><tr>{['Image','Product','SKU','Category','Price','Cost','Stock','Margin','Actions'].map(h=><th key={h} className="table-header">{h}</th>)}</tr></thead>
+            <thead className="bg-gray-50 dark:bg-gray-800/50"><tr>{['Images','Product','SKU','Category','Price','Cost','Stock','Margin','Actions'].map(h=><th key={h} className="table-header">{h}</th>)}</tr></thead>
             <tbody>
               {data?.products?.map(p => {
-                const margin = p.costPrice > 0 ? (((p.price-p.costPrice)/p.price)*100).toFixed(0) : '—';
-                const imgs = (() => { try { return JSON.parse(p.images||'[]'); } catch { return []; } })();
+                const margin2 = p.costPrice > 0 ? (((p.price-p.costPrice)/p.price)*100).toFixed(0) : '—';
+                const imgCount = (() => { try { return JSON.parse(p.images||'[]').length; } catch { return 0; } })();
                 return (
                   <tr key={p.id} className="table-row">
-                    <td className="table-cell"><div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-hidden">{imgs[0]?<img src={imgs[0]} alt={p.name} className="w-full h-full object-cover"/>:<div className="w-full h-full flex items-center justify-center text-lg">👗</div>}</div></td>
-                    <td className="table-cell font-medium">{p.name}</td>
+                    <td className="table-cell">
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => setPreviewProd(p)} className="cursor-pointer" title="View all images">
+                          <ProductImagesPreview imagesJson={p.images} />
+                        </button>
+                        {imgCount === 0 && <button onClick={() => openEdit(p)} className="text-[10px] text-[#C9A96E] font-semibold hover:underline">Add photos</button>}
+                      </div>
+                    </td>
+                    <td className="table-cell">
+                      <p className="font-medium">{p.name}</p>
+                      {imgCount > 0 && <p className="text-[10px] text-[#C9A96E]">{imgCount} photo{imgCount>1?'s':''}</p>}
+                    </td>
                     <td className="table-cell text-xs font-mono text-gray-400">{p.sku||'—'}</td>
                     <td className="table-cell"><span className="badge-gray text-xs">{p.category?.name||'—'}</span></td>
                     <td className="table-cell font-medium text-sm">UGX {p.price?.toLocaleString()}</td>
                     <td className="table-cell text-gray-500 text-sm">UGX {p.costPrice?.toLocaleString()}</td>
                     <td className="table-cell"><span className={`badge font-semibold ${p.stock===0?'badge-red':p.stock<=p.lowStockThreshold?'badge-yellow':'badge-green'}`}>{p.stock}</span></td>
-                    <td className="table-cell"><span className="badge-gold">{margin}%</span></td>
+                    <td className="table-cell"><span className="badge-gold">{margin2}%</span></td>
                     <td className="table-cell">
                       <div className="flex gap-1">
                         <button onClick={() => { setAdjustProd(p); setAdjustForm({type:'in',quantity:'',reason:''}); }} className="btn-ghost py-1 px-2 text-xs" title="Adjust Stock"><Package size={13}/></button>
@@ -300,51 +436,58 @@ export function Inventory() {
             </tbody>
           </table>
         </div>
-        {!data?.products?.length && !false && <Empty icon={Package} message="No products yet" sub='Click "Add Product" to add your first item'/>}
+        {!data?.products?.length && <Empty icon={Package} message="No products yet" sub='Click "Add Product" to add your first item'/>}
       </div>
 
-      {/* Add Product Modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add New Product" size="lg"
-        footer={<><button onClick={() => setShowAdd(false)} className="btn-secondary">Cancel</button><button onClick={() => createProd.mutate(form)} disabled={!form.name||!form.price||createProd.isPending||uploading} className="btn-primary disabled:opacity-40">{uploading?'Uploading...':createProd.isPending?'Saving...':'Create Product'}</button></>}>
+      {/* Add Product Modal — multi-image, auto SKU, live margin */}
+      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="Add New Product" size="xl"
+        footer={<><button onClick={() => setShowAdd(false)} className="btn-secondary">Cancel</button><button onClick={() => createProd.mutate(form)} disabled={!form.name||!form.price||createProd.isPending} className="btn-primary disabled:opacity-40">{createProd.isPending?'Saving...':'Create Product'}</button></>}>
         <div className="space-y-4">
-          <div>
-            <label className="label">Product Image</label>
-            <div className="flex gap-3 items-start">
-              <div className="w-20 h-20 rounded-xl bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden flex items-center justify-center shrink-0 cursor-pointer hover:border-[#C9A96E] transition-colors" onClick={() => fileRef.current?.click()}>
-                {imageFile ? <img src={URL.createObjectURL(imageFile)} className="w-full h-full object-cover"/> : imageUrl ? <img src={imageUrl} className="w-full h-full object-cover"/> : <div className="text-center"><ImgIcon size={20} className="text-gray-400 mx-auto"/><p className="text-[10px] text-gray-400 mt-1">Click to upload</p></div>}
-              </div>
-              <div className="flex-1 space-y-2">
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { if(e.target.files[0]) { setImageFile(e.target.files[0]); setImageUrl(''); }}}/>
-                <button type="button" onClick={() => fileRef.current?.click()} className="btn-secondary text-xs py-2 w-full justify-center"><Upload size={13}/> Upload from Computer</button>
-                <input className="input text-xs py-2" placeholder="Or paste image URL (https://...)" value={imageUrl} onChange={e => { setImageUrl(e.target.value); setImageFile(null); }}/>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
+          <MultiImageUploader images={images} onChange={setImages} />
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
             <div className="col-span-2"><label className="label">Product Name *</label><input className="input" value={form.name} onChange={e => ff('name',e.target.value)} placeholder="e.g. Floral Wrap Dress"/></div>
-            <div><label className="label">SKU / Code</label><input className="input" value={form.sku} onChange={e => ff('sku',e.target.value)} placeholder="VV-001"/></div>
-            <div><label className="label">Category</label><select className="input" value={form.categoryId} onChange={e => ff('categoryId',e.target.value)}><option value="">Select category</option>{cats?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div>
+              <label className="label">SKU / Code <span className="text-gray-400 font-normal">(auto-generated)</span></label>
+              <input className="input" value={skuLoading ? 'Generating…' : form.sku} onChange={e => ff('sku',e.target.value)} placeholder="Auto-generated on save" disabled={skuLoading}/>
+            </div>
+            <div><label className="label">Category</label><select className="input" value={form.categoryId} onChange={e => { ff('categoryId',e.target.value); fetchNextSku(e.target.value); }}><option value="">Select category</option>{cats?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
             <div><label className="label">Selling Price (UGX) *</label><input className="input" type="number" value={form.price} onChange={e => ff('price',e.target.value)}/></div>
             <div><label className="label">Cost Price (UGX)</label><input className="input" type="number" value={form.costPrice} onChange={e => ff('costPrice',e.target.value)}/></div>
             <div><label className="label">Opening Stock</label><input className="input" type="number" value={form.stock} onChange={e => ff('stock',e.target.value)}/></div>
             <div><label className="label">Low Stock Alert</label><input className="input" type="number" value={form.lowStockThreshold} onChange={e => ff('lowStockThreshold',e.target.value)}/></div>
             <div className="col-span-2"><label className="label">Description</label><textarea className="input resize-none" rows={2} value={form.description} onChange={e => ff('description',e.target.value)}/></div>
           </div>
-          {form.price && form.costPrice && <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3 text-sm"><p className="text-green-700 dark:text-green-400 font-medium">Profit margin: {(((parseFloat(form.price)-parseFloat(form.costPrice))/parseFloat(form.price))*100).toFixed(1)}% · UGX {(parseFloat(form.price)-parseFloat(form.costPrice)).toLocaleString()} per unit</p></div>}
+          {margin && (
+            <div className={`rounded-xl p-3 text-sm border ${parseFloat(margin)>=30?'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800':parseFloat(margin)>=15?'bg-yellow-50 border-yellow-200':'bg-red-50 border-red-200'}`}>
+              <p className={`font-medium ${parseFloat(margin)>=30?'text-green-700 dark:text-green-400':parseFloat(margin)>=15?'text-yellow-700':'text-red-700'}`}>
+                Profit margin: {margin}% · UGX {(parseFloat(form.price)-parseFloat(form.costPrice)).toLocaleString()} per unit
+              </p>
+            </div>
+          )}
         </div>
       </Modal>
 
-      {/* Edit Modal */}
-      <Modal open={!!editProd} onClose={() => setEditProd(null)} title={`Edit: ${editProd?.name}`} size="lg"
-        footer={<><button onClick={() => setEditProd(null)} className="btn-secondary">Cancel</button><button onClick={() => updateProd.mutate({ id: editProd?.id, ...form, images: imageUrl ? JSON.stringify([imageUrl]) : editProd?.images })} disabled={updateProd.isPending} className="btn-primary">{updateProd.isPending?'Saving...':'Save Changes'}</button></>}>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2"><label className="label">Product Name</label><input className="input" value={form.name} onChange={e => ff('name',e.target.value)}/></div>
-          <div><label className="label">Selling Price</label><input className="input" type="number" value={form.price} onChange={e => ff('price',e.target.value)}/></div>
-          <div><label className="label">Cost Price</label><input className="input" type="number" value={form.costPrice} onChange={e => ff('costPrice',e.target.value)}/></div>
-          <div><label className="label">Category</label><select className="input" value={form.categoryId} onChange={e => ff('categoryId',e.target.value)}><option value="">None</option>{cats?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-          <div><label className="label">Low Stock Alert</label><input className="input" type="number" value={form.lowStockThreshold} onChange={e => ff('lowStockThreshold',e.target.value)}/></div>
-          <div className="col-span-2"><label className="label">Image URL</label><input className="input" value={imageUrl} onChange={e => setImageUrl(e.target.value)} placeholder="https://..."/></div>
-          <div className="col-span-2"><label className="label">Description</label><textarea className="input resize-none" rows={2} value={form.description} onChange={e => ff('description',e.target.value)}/></div>
+      {/* Edit Modal — multi-image */}
+      <Modal open={!!editProd} onClose={() => setEditProd(null)} title={`Edit: ${editProd?.name}`} size="xl"
+        footer={<><button onClick={() => setEditProd(null)} className="btn-secondary">Cancel</button><button onClick={() => updateProd.mutate({ id: editProd?.id, ...form, images })} disabled={updateProd.isPending} className="btn-primary">{updateProd.isPending?'Saving...':'Save Changes'}</button></>}>
+        <div className="space-y-4">
+          <MultiImageUploader images={images} onChange={setImages} />
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <div className="col-span-2"><label className="label">Product Name</label><input className="input" value={form.name} onChange={e => ff('name',e.target.value)}/></div>
+            <div><label className="label">SKU</label><input className="input" value={form.sku} onChange={e => ff('sku',e.target.value)}/></div>
+            <div><label className="label">Selling Price</label><input className="input" type="number" value={form.price} onChange={e => ff('price',e.target.value)}/></div>
+            <div><label className="label">Cost Price</label><input className="input" type="number" value={form.costPrice} onChange={e => ff('costPrice',e.target.value)}/></div>
+            <div><label className="label">Category</label><select className="input" value={form.categoryId} onChange={e => ff('categoryId',e.target.value)}><option value="">None</option>{cats?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+            <div><label className="label">Low Stock Alert</label><input className="input" type="number" value={form.lowStockThreshold} onChange={e => ff('lowStockThreshold',e.target.value)}/></div>
+            <div className="col-span-2"><label className="label">Description</label><textarea className="input resize-none" rows={2} value={form.description} onChange={e => ff('description',e.target.value)}/></div>
+          </div>
+          {margin && (
+            <div className={`rounded-xl p-3 text-sm border ${parseFloat(margin)>=30?'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800':parseFloat(margin)>=15?'bg-yellow-50 border-yellow-200':'bg-red-50 border-red-200'}`}>
+              <p className={`font-medium ${parseFloat(margin)>=30?'text-green-700 dark:text-green-400':parseFloat(margin)>=15?'text-yellow-700':'text-red-700'}`}>
+                Profit margin: {margin}% · UGX {(parseFloat(form.price)-parseFloat(form.costPrice)).toLocaleString()} per unit
+              </p>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -367,7 +510,50 @@ export function Inventory() {
           <div><label className="label">Reason</label><input className="input" value={adjustForm.reason} onChange={e => setAdjustForm(p=>({...p,reason:e.target.value}))} placeholder="e.g. New delivery from supplier, damaged stock..."/></div>
         </div>
       </Modal>
+
+      {/* Image Preview Modal — view all images with thumbnails */}
+      <Modal open={!!previewProd} onClose={() => setPreviewProd(null)} title={previewProd?.name || 'Product Images'}>
+        {previewProd && <ImagePreviewGallery product={previewProd} />}
+      </Modal>
     </Page>
+  );
+}
+
+// Gallery shown inside the preview modal — arrow nav + thumbnails
+function ImagePreviewGallery({ product }) {
+  const [idx, setIdx] = useState(0);
+  const images = (() => {
+    try {
+      const parsed = JSON.parse(product.images || '[]');
+      return parsed.map(i => typeof i === 'string' ? { url: i, label: 'Image' } : i);
+    } catch { return []; }
+  })();
+  if (!images.length) return <div className="py-10 text-center text-gray-400"><ImgIcon size={28} className="mx-auto mb-2 opacity-30"/><p>No images uploaded yet</p></div>;
+  const prev = () => setIdx(i => (i - 1 + images.length) % images.length);
+  const next = () => setIdx(i => (i + 1) % images.length);
+  return (
+    <div>
+      <div className="relative rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-800" style={{ aspectRatio: '4/3' }}>
+        <img src={images[idx].url} alt={images[idx].label} className="w-full h-full object-contain" />
+        {images[idx].isPrimary && <div className="absolute top-2 left-2 bg-[#C9A96E] text-black text-xs font-bold px-2 py-1 rounded-full">Primary</div>}
+        <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded-full">{images[idx].label}</div>
+        {images.length > 1 && (
+          <>
+            <button onClick={prev} className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/40 text-white rounded-full flex items-center justify-center hover:bg-black/60"><ChevronLeft size={16}/></button>
+            <button onClick={next} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-black/40 text-white rounded-full flex items-center justify-center hover:bg-black/60"><ChevronRight size={16}/></button>
+          </>
+        )}
+      </div>
+      {images.length > 1 && (
+        <div className="flex gap-2 mt-3 overflow-x-auto">
+          {images.map((img, i) => (
+            <button key={i} onClick={() => setIdx(i)} className={`flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 ${i===idx?'border-[#C9A96E]':'border-transparent'}`}>
+              <img src={img.url} alt={img.label} className="w-full h-full object-cover" />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
