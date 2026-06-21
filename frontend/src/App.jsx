@@ -134,16 +134,16 @@ function SessionInit() {
 function Guard({ children, admin, manager }) {
   const { user } = useStore();
   if (!user) return <Navigate to="/login" replace />;
-  if (admin && user.role !== 'admin') return <Navigate to="/" replace />;
-  if (manager && !['admin', 'manager'].includes(user.role)) return <Navigate to="/" replace />;
+  if (admin && user.role !== 'admin') return <Navigate to="/dashboard" replace />;
+  if (manager && !['admin', 'manager'].includes(user.role)) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
 // Redirects already-logged-in STAFF away from /login to dashboard
-// Does NOT affect the /store route — customers are separate
+// Does NOT affect the public store route — customers are separate
 function LoginGuard({ children }) {
   const { user } = useStore();
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
   return children;
 }
 
@@ -162,11 +162,17 @@ export default function App() {
           duration: 4000,
         }} />
         <Routes>
-          {/* /login — staff only; redirects to dashboard if already logged in */}
-          <Route path="/login" element={<LoginGuard><Login /></LoginGuard>} />
-          {/* /store — customer portal; completely independent of staff auth */}
+          {/* / — PUBLIC STORE FIRST. This is what every visitor sees by default. */}
+          <Route path="/" element={<CustomerPortalWrapper />} />
+          {/* /store — kept as an alias so any previously shared /store links still work */}
           <Route path="/store/*" element={<CustomerPortalWrapper />} />
-          <Route path="/" element={<Guard><Layout /></Guard>}>
+
+          {/* /login — staff only; redirects to /dashboard if already logged in.
+              The portal has a "Staff Login" button that links here directly. */}
+          <Route path="/login" element={<LoginGuard><Login /></LoginGuard>} />
+
+          {/* /dashboard — the entire Business Management System now lives under here */}
+          <Route path="/dashboard" element={<Guard><Layout /></Guard>}>
             <Route index element={<Dashboard />} />
             <Route path="pos" element={<POS />} />
             <Route path="orders" element={<Orders />} />
@@ -191,6 +197,8 @@ export default function App() {
             <Route path="users" element={<Guard admin><UsersPage /></Guard>} />
             <Route path="settings" element={<Guard admin><SettingsPage /></Guard>} />
           </Route>
+
+          {/* Any unmatched route falls back to the public store, not the BMS */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
