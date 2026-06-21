@@ -13,41 +13,41 @@ import {
 
 const NAV = [
   { label: 'Main', items: [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-    { to: '/pos', icon: ShoppingCart, label: 'Point of Sale' },
-    { to: '/orders', icon: Receipt, label: 'Orders' },
-    { to: '/inventory', icon: Package, label: 'Inventory' },
-    { to: '/customers', icon: Users, label: 'Customers' },
+    { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', exact: true, color: '#C9A96E' },
+    { to: '/dashboard/pos', icon: ShoppingCart, label: 'Point of Sale', color: '#2E9E5B' },
+    { to: '/dashboard/orders', icon: Receipt, label: 'Orders', color: '#3B82F6' },
+    { to: '/dashboard/inventory', icon: Package, label: 'Inventory', color: '#F97316' },
+    { to: '/dashboard/customers', icon: Users, label: 'Customers', color: '#8B5CF6' },
   ]},
   { label: 'Finance', items: [
-    { to: '/expenses', icon: DollarSign, label: 'Expenses' },
-    { to: '/cash-float', icon: Wallet, label: 'Cash Float', roles: ['admin','manager'] },
-    { to: '/cashbook', icon: BookMarked, label: 'Cash Book', roles: ['admin','manager'] },
-    { to: '/layaway', icon: Layers, label: 'Layaway' },
-    { to: '/debts', icon: AlertTriangle, label: 'Customer Debts', roles: ['admin','manager'] },
+    { to: '/dashboard/expenses', icon: DollarSign, label: 'Expenses', color: '#EF4444' },
+    { to: '/dashboard/cash-float', icon: Wallet, label: 'Cash Float', roles: ['admin','manager'], color: '#10B981' },
+    { to: '/dashboard/cashbook', icon: BookMarked, label: 'Cash Book', roles: ['admin','manager'], color: '#0EA5E9' },
+    { to: '/dashboard/layaway', icon: Layers, label: 'Layaway', color: '#A855F7' },
+    { to: '/dashboard/debts', icon: AlertTriangle, label: 'Customer Debts', roles: ['admin','manager'], color: '#F59E0B' },
   ]},
   { label: 'Procurement', items: [
-    { to: '/suppliers', icon: Truck, label: 'Suppliers', roles: ['admin','manager'] },
-    { to: '/purchase-orders', icon: ClipboardList, label: 'Purchase Orders', roles: ['admin','manager'] },
-    { to: '/stock-count', icon: BookOpen, label: 'Stock Count', roles: ['admin','manager'] },
+    { to: '/dashboard/suppliers', icon: Truck, label: 'Suppliers', roles: ['admin','manager'], color: '#06B6D4' },
+    { to: '/dashboard/purchase-orders', icon: ClipboardList, label: 'Purchase Orders', roles: ['admin','manager'], color: '#6366F1' },
+    { to: '/dashboard/stock-count', icon: BookOpen, label: 'Stock Count', roles: ['admin','manager'], color: '#84CC16' },
   ]},
   { label: 'Commerce', items: [
-    { to: '/quotations', icon: FileText, label: 'Quotations', roles: ['admin','manager'] },
-    { to: '/discounts', icon: Tag, label: 'Discounts', roles: ['admin','manager'] },
+    { to: '/dashboard/quotations', icon: FileText, label: 'Quotations', roles: ['admin','manager'], color: '#EC4899' },
+    { to: '/dashboard/discounts', icon: Tag, label: 'Discounts', roles: ['admin','manager'], color: '#F43F5E' },
   ]},
   { label: 'Intelligence', items: [
-    { to: '/reports', icon: BarChart3, label: 'Reports', roles: ['admin','manager'] },
-    { to: '/analytics', icon: TrendingUp, label: 'Analytics', roles: ['admin','manager'] },
-    { to: '/feedback', icon: MessageSquare, label: 'Feedback', roles: ['admin','manager'] },
+    { to: '/dashboard/reports', icon: BarChart3, label: 'Reports', roles: ['admin','manager'], color: '#0284C7' },
+    { to: '/dashboard/analytics', icon: TrendingUp, label: 'Analytics', roles: ['admin','manager'], color: '#7C3AED' },
+    { to: '/dashboard/feedback', icon: MessageSquare, label: 'Feedback', roles: ['admin','manager'], color: '#14B8A6' },
   ]},
   { label: 'Team', items: [
-    { to: '/staff', icon: UserCircle, label: 'Staff' },
-    { to: '/users', icon: Shield, label: 'User Mgmt', roles: ['admin'] },
+    { to: '/dashboard/staff', icon: UserCircle, label: 'Staff', color: '#D97706' },
+    { to: '/dashboard/users', icon: Shield, label: 'User Mgmt', roles: ['admin'], color: '#475569' },
   ]},
   { label: 'System', items: [
-    { to: '/activity', icon: Activity, label: 'Activity Log', roles: ['admin'] },
-    { to: '/security', icon: Shield, label: 'Security', roles: ['admin'] },
-    { to: '/settings', icon: Settings, label: 'Settings', roles: ['admin'] },
+    { to: '/dashboard/activity', icon: Activity, label: 'Activity Log', roles: ['admin'], color: '#DB2777' },
+    { to: '/dashboard/security', icon: Shield, label: 'Security', roles: ['admin'], color: '#DC2626' },
+    { to: '/dashboard/settings', icon: Settings, label: 'Settings', roles: ['admin'], color: '#64748B' },
   ]},
 ];
 
@@ -86,11 +86,19 @@ export default function Layout() {
             <div key={group.label}>
               {!collapsed && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-1 px-2">{group.label}</p>}
               <div className="space-y-0.5">
-                {visible.map(({ to, icon: Icon, label, exact }) => (
+                {visible.map(({ to, icon: Icon, label, exact, color }) => (
                   <NavLink key={to} to={to} end={exact} onClick={() => setMobileOpen(false)}
-                    className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${isActive ? 'bg-[#C9A96E]/10 text-[#A8824A] dark:text-[#C9A96E]' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'} ${collapsed ? 'justify-center' : ''}`}
+                    className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150 ${isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800'} ${collapsed ? 'justify-center' : ''}`}
+                    style={({ isActive }) => isActive ? { background: `${color}1A` } : undefined}
                     title={collapsed ? label : undefined}>
-                    <Icon size={17} className="shrink-0" />{!collapsed && <span className="truncate">{label}</span>}
+                    {({ isActive }) => (
+                      <>
+                        <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ background: isActive ? `${color}26` : `${color}14` }}>
+                          <Icon size={15} style={{ color }} />
+                        </div>
+                        {!collapsed && <span className="truncate">{label}</span>}
+                      </>
+                    )}
                   </NavLink>
                 ))}
               </div>
@@ -152,7 +160,7 @@ export default function Layout() {
               <span className="text-gray-300">·</span>
               <span className="text-gray-500 text-xs">{dash.today?.orders||0} orders</span>
               {dash.inventory?.lowStockCount > 0 && (
-                <NavLink to="/inventory" className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
+                <NavLink to="/dashboard/inventory" className="flex items-center gap-1 text-xs font-medium text-amber-600 bg-amber-50 px-2 py-1 rounded-lg">
                   <AlertTriangle size={11}/> {dash.inventory.lowStockCount} low stock
                 </NavLink>
               )}
@@ -160,6 +168,9 @@ export default function Layout() {
           )}
 
           <div className="flex items-center gap-1.5">
+            <a href="/" target="_blank" rel="noopener noreferrer" className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-[#A8824A] hover:bg-[#C9A96E]/10 transition-colors" title="View public store in new tab">
+              <Sparkles size={13}/> Visit Store
+            </a>
             <button onClick={toggleDark} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500">
               {darkMode ? <Sun size={16}/> : <Moon size={16}/>}
             </button>
