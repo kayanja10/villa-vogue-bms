@@ -140,6 +140,108 @@ router.get('/dashboard', authenticate, async (req, res) => {
   }
 });
 
+
+// ─── DAILY CLOSING REPORT ─────────────────────────────────────
+// Generates the end-of-day summary as both structured JSON (for the dashboard
+// widget) and a pre-formatted WhatsApp message (for the one-click send link).
+// There is no server-side WhatsApp sending — this returns a wa.me link that
+// staff tap to actually send, since automated sending requires a paid Meta
+// Business API account that isn't configured.
+router.get('/daily-closing', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const target = date ? new Date(date) : new Date();
+    const dayStart = new Date(target.getFullYear(), target.getMonth(), target.getDate());
+    const dayEnd = new Date(dayStart.getTime() + 86400000 - 1);
+
+    const [orders, expenses, voidedCount] = await Promise.all([
+      prisma.order.findMany({
+        where: { createdAt: { gte: dayStart, lte: dayEnd }, orderStatus: { not: 'voided' } },
+        select: { total: true, paymentMethod: true, orderSource: true, items: true, servedBy: true },
+      }),
+      prisma.expense.aggregate({
+        where: { createdAt: { gte: dayStart, lte: dayEnd } },
+        _sum: { amount: true },
+      }),
+      prisma.order.count({ where: { createdAt: { gte: dayStart, lte: dayEnd }, orderStatus: 'voided' } }),
+    ]);
+
+    const totalSales = orders.reduce((s, o) => s + o.total, 0);
+    const totalExpenses = expenses._sum.amount || 0;
+    const netProfit = totalSales - totalExpenses;
+
+    const byPayment = {};
+    orders.forEach(o => { byPayment[o.paymentMethod] = (byPayment[o.paymentMethod] || 0) + o.total; });
+
+    const onlineCount = orders.filter(o => o.orderSource === 'online').length;
+    const posCount = orders.length - onlineCount;
+
+    const itemTally = {};
+    orders.forEach(o => {
+      try {
+        JSON.parse(o.items || '[]').forEach(i => {
+          itemTally[i.name] = (itemTally[i.name] || 0) + i.quantity;
+        });
+      } catch {}
+    });
+    const topItem = Object.entries(itemTally).sort((a, b) => b[1] - a[1])[0];
+
+    const staffIds = [...new Set(orders.map(o => o.servedBy).filter(Boolean))];
+    const staffUsers = staffIds.length
+      ? await prisma.user.findMany({ where: { id: { in: staffIds } }, select: { id: true, username: true } })
+      : [];
+    const staffSales = staffUsers.map(u => ({
+      username: u.username,
+      sales: orders.filter(o => o.servedBy === u.id).reduce((s, o) => s + o.total, 0),
+      orders: orders.filter(o => o.servedBy === u.id).length,
+    })).sort((a, b) => b.sales - a.sales);
+
+    const dateLabel = dayStart.toLocaleDateString('en-UG', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    const lines = [
+      `📋 *VILLA VOGUE — DAILY CLOSING*`,
+      `${dateLabel}`,
+      ``,
+      `💰 *Total Sales:* UGX ${totalSales.toLocaleString()}`,
+      `📦 *Orders:* ${orders.length} (${posCount} in-store, ${onlineCount} online)`,
+      `💸 *Expenses:* UGX ${totalExpenses.toLocaleString()}`,
+      `✅ *Net Profit:* UGX ${netProfit.toLocaleString()}`,
+      ``,
+      `*Payment Breakdown:*`,
+      ...Object.entries(byPayment).map(([m, v]) => `• ${m.replace(/_/g, ' ')}: UGX ${v.toLocaleString()}`),
+      ``,
+      topItem ? `🏆 *Top Seller:* ${topItem[0]} (${topItem[1]} sold)` : null,
+      voidedCount > 0 ? `⚠️ *Voided orders:* ${voidedCount}` : null,
+      ``,
+      staffSales.length ? `*Staff Performance:*` : null,
+      ...staffSales.slice(0, 5).map((s, i) => `${i + 1}. ${s.username}: UGX ${s.sales.toLocaleString()} (${s.orders} orders)`),
+    ].filter(Boolean);
+
+    const message = lines.join('\n');
+    const whatsappUrl = `https://wa.me/256782860372?text=${encodeURIComponent(message)}`;
+
+    res.json({
+      date: dayStart.toISOString().split('T')[0],
+      dateLabel,
+      totalSales,
+      totalExpenses,
+      netProfit,
+      orderCount: orders.length,
+      onlineCount,
+      posCount,
+      voidedCount,
+      byPayment,
+      topItem: topItem ? { name: topItem[0], unitsSold: topItem[1] } : null,
+      staffSales,
+      message,
+      whatsappUrl,
+    });
+  } catch (err) {
+    console.error('Daily closing report error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ─── SALES REPORT ────────────────────────────────────────────
 router.get('/sales-report', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {

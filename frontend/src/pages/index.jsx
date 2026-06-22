@@ -86,6 +86,16 @@ export function Orders() {
     onError: (e) => toast.error(e.response?.data?.error || 'Failed to update status'),
   });
 
+  const markPaidMut = useMutation({
+    mutationFn: (id) => apiLib.orders.markPaid(id),
+    onSuccess: (res) => {
+      toast.success('Payment confirmed ✅');
+      setSelected(res.data);
+      qc.invalidateQueries(['orders']);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to mark as paid'),
+  });
+
   const printReceipt = (order) => {
     const items = (() => { try { return JSON.parse(order.items); } catch { return []; } })();
     const w = window.open('', '_blank', 'width=380,height=600');
@@ -173,7 +183,12 @@ export function Orders() {
                     <td className="table-cell text-sm">{o.customerName||<span className="text-gray-400 italic">Walk-in</span>}</td>
                     <td className="table-cell text-sm">{(() => { try { return JSON.parse(o.items).length; } catch { return '?'; } })()} items</td>
                     <td className="table-cell font-semibold text-sm">UGX {Number(o.total).toLocaleString()}</td>
-                    <td className="table-cell"><span className="badge-gold capitalize text-xs">{o.paymentMethod?.replace(/_/g,' ')}</span></td>
+                    <td className="table-cell">
+                      <span className="badge-gold capitalize text-xs">
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${o.paymentStatus === 'paid' ? 'bg-green-500' : 'bg-amber-400'}`} title={o.paymentStatus === 'paid' ? 'Paid' : 'Payment pending'}/>
+                        {o.paymentMethod?.replace(/_/g,' ')}
+                      </span>
+                    </td>
                     <td className="table-cell">
                       <span className="badge capitalize text-xs" style={{ background: `${si.color}22`, color: si.color }}>
                         <si.icon size={10} className="inline mr-0.5"/> {si.l}
@@ -272,7 +287,31 @@ export function Orders() {
               {/* Customer details */}
               <div className="grid grid-cols-2 gap-3 text-sm border-t border-gray-100 dark:border-gray-800 pt-4">
                 <div><p className="text-xs text-gray-500">Phone</p><p className="font-medium">{selected.customerPhone||'—'}</p></div>
-                <div><p className="text-xs text-gray-500">Payment</p><p className="font-medium capitalize">{selected.paymentMethod?.replace(/_/g,' ')}</p></div>
+                <div>
+                  <p className="text-xs text-gray-500">Payment</p>
+                  <p className="font-medium capitalize">{selected.paymentMethod?.replace(/_/g,' ')}</p>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+                    <div className="flex items-center gap-2">
+                      {selected.paymentStatus === 'paid'
+                        ? <CheckCircle size={15} className="text-green-500"/>
+                        : <Clock size={15} className="text-amber-500"/>}
+                      <span className={`text-sm font-medium ${selected.paymentStatus === 'paid' ? 'text-green-600' : 'text-amber-600'}`}>
+                        {selected.paymentStatus === 'paid' ? 'Payment Confirmed' : 'Payment Pending'}
+                      </span>
+                    </div>
+                    {selected.paymentStatus !== 'paid' && (
+                      <button
+                        onClick={() => markPaidMut.mutate(selected.id)}
+                        disabled={markPaidMut.isPending}
+                        className="text-xs font-semibold text-white bg-green-500 hover:bg-green-600 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                      >
+                        {markPaidMut.isPending ? 'Confirming…' : '✓ Mark as Paid'}
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="col-span-2"><p className="text-xs text-gray-500">Notes / Delivery Info</p><p className="font-medium text-xs">{selected.notes || '—'}</p></div>
               </div>
 

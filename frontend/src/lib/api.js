@@ -62,6 +62,7 @@ export const orders = {
   get:          (id)      => api.get(`/orders/${id}`),
   create:       (d)       => api.post('/orders', d),
   updateStatus: (id,status,note) => api.put(`/orders/${id}/status`, { status, note }),
+  markPaid:     (id)             => api.put(`/orders/${id}/mark-paid`),
   delete:       (id)      => api.delete(`/orders/${id}`),
   track:        (orderNumber) => api.get(`/orders/track/${orderNumber}`),
 };
@@ -79,6 +80,7 @@ export const customers = {
 
 export const analytics = {
   dashboard:          ()  => api.get('/analytics/dashboard'),
+  dailyClosing:       (p) => api.get('/analytics/daily-closing', { params: p }),
   salesReport:        (p) => api.get('/analytics/sales-report', { params: p }),
   categoryPerformance:(p) => api.get('/analytics/category-performance', { params: p }),
   staffPerformance:   (p) => api.get('/analytics/staff-performance', { params: p }),

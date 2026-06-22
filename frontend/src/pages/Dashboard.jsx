@@ -5,7 +5,7 @@ import {
   TrendingUp, TrendingDown, ShoppingBag, Users, Package, DollarSign,
   AlertTriangle, ArrowRight, Bell, Sparkles, Send, RefreshCw,
   XCircle, CheckCircle, Zap, Target, ChevronRight, ArrowUp, ArrowDown,
-  ShoppingCart, Phone, Truck, X,
+  ShoppingCart, Phone, Truck, X, Award, Trophy, MessageCircle, Repeat, FileText,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { analytics, ai, notifications, orders as ordersApi } from '../lib/api';
@@ -191,6 +191,23 @@ export default function Dashboard() {
     sessionStorage.setItem('vv_pending_popup_dismissed', '1');
     setShowPendingPopup(false);
   };
+
+  // ── Staff leaderboard (manager/admin only — analytics endpoint already gated server-side) ──
+  const { data: staffLeaderboard } = useQuery({
+    queryKey: ['staff-leaderboard'],
+    queryFn: () => analytics.staffPerformance({}).then(r => r.data),
+    staleTime: 120000,
+    retry: false, // gracefully no-op for cashier/staff roles who get 403
+  });
+
+  // ── Daily closing report — fetched on demand when the widget is opened ──
+  const [showClosingReport, setShowClosingReport] = useState(false);
+  const { data: closingReport, refetch: refetchClosing, isFetching: closingLoading } = useQuery({
+    queryKey: ['daily-closing'],
+    queryFn: () => analytics.dailyClosing({}).then(r => r.data),
+    enabled: false, // only fetch when the staff member opens the widget
+    retry: false,
+  });
 
   // ── Listen for online orders via Socket.IO ──────────────────────────────
   useEffect(() => {
@@ -641,6 +658,130 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* ── STAFF LEADERBOARD + REORDER SUGGESTIONS ── */}
+      <div className="grid lg:grid-cols-2 gap-4">
+
+        {/* Staff Sales Leaderboard */}
+        {staffLeaderboard?.length > 0 && (
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-heading font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Trophy size={16} className="text-[#C9A96E]" /> Staff Leaderboard
+              </h3>
+              <span className="text-xs text-gray-400">All time</span>
+            </div>
+            <div className="space-y-2.5">
+              {staffLeaderboard.slice(0, 5).map((s, i) => (
+                <div key={s.id} className="flex items-center gap-3">
+                  <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                    i === 0 ? 'bg-gradient-to-br from-[#FFD700] to-[#C9A96E] text-white' :
+                    i === 1 ? 'bg-gradient-to-br from-[#C0C0C0] to-[#9ca3af] text-white' :
+                    i === 2 ? 'bg-gradient-to-br from-[#CD7F32] to-[#A0622E] text-white' :
+                    'bg-gray-100 dark:bg-gray-800 text-gray-500'
+                  }`}>
+                    {i < 3 ? <Award size={13} /> : i + 1}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{s.username}</p>
+                    <p className="text-[11px] text-gray-400 capitalize">{s.role} · {s.totalOrders} orders</p>
+                  </div>
+                  <span className="text-sm font-bold text-[#A8824A] shrink-0">UGX {fmt(s.totalSales)}</span>
+                </div>
+              ))}
+            </div>
+            <Link to="/dashboard/staff" className="mt-4 flex items-center justify-center gap-1 text-xs text-[#A8824A] hover:underline">
+              View Staff Page <ArrowRight size={12} />
+            </Link>
+          </div>
+        )}
+
+        {/* Reorder Suggestions — built from existing low-stock data, no supplier table needed */}
+        {inventory.lowStockItems?.length > 0 && (
+          <div className="card p-5 border border-amber-200 dark:border-amber-800">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-heading font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Repeat size={16} className="text-amber-500" /> Reorder Suggestions
+              </h3>
+              <span className="badge-yellow text-xs">{inventory.lowStockItems.length} items</span>
+            </div>
+            <div className="space-y-2.5 max-h-64 overflow-y-auto">
+              {inventory.lowStockItems.map(p => {
+                // Suggest restocking back up to 3x the low-stock threshold — a simple,
+                // sensible default since there's no supplier reorder-quantity table yet.
+                const suggestedQty = Math.max((p.lowStockThreshold || 5) * 3 - p.stock, p.lowStockThreshold || 5);
+                const estimatedCost = suggestedQty * (p.costPrice || 0);
+                return (
+                  <div key={p.id} className="flex items-center justify-between gap-3 p-2.5 rounded-lg bg-amber-50/50 dark:bg-amber-900/10">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{p.name}</p>
+                      <p className="text-[11px] text-gray-500">{p.stock} left · suggest reorder <strong>{suggestedQty}</strong> units</p>
+                    </div>
+                    <span className="text-xs font-semibold text-amber-700 shrink-0">~UGX {fmt(estimatedCost)}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <a
+              href={`https://wa.me/256782860372?text=${encodeURIComponent(
+                `📦 Restock needed:\n\n${inventory.lowStockItems.map(p => {
+                  const q = Math.max((p.lowStockThreshold || 5) * 3 - p.stock, p.lowStockThreshold || 5);
+                  return `• ${p.name}: ${p.stock} left → reorder ${q}`;
+                }).join('\n')}`
+              )}`}
+              target="_blank" rel="noopener noreferrer"
+              className="mt-4 flex items-center justify-center gap-2 w-full py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-medium"
+            >
+              <MessageCircle size={14} /> Send Reorder List
+            </a>
+          </div>
+        )}
+      </div>
+
+      {/* ── DAILY CLOSING REPORT ── */}
+      <div className="card p-5">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-heading font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <FileText size={16} className="text-[#C9A96E]" /> Daily Closing Report
+          </h3>
+          <button
+            onClick={() => { setShowClosingReport(v => !v); if (!closingReport) refetchClosing(); }}
+            className="btn-secondary py-1.5 px-3 text-xs"
+          >
+            {showClosingReport ? 'Hide' : closingLoading ? 'Loading…' : 'Generate'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mb-3">End-of-day summary, ready to send on WhatsApp</p>
+
+        {showClosingReport && closingReport && (
+          <div className="border-t border-gray-100 dark:border-gray-800 pt-4 space-y-4">
+            <p className="text-sm font-medium text-gray-600 dark:text-gray-300">{closingReport.dateLabel}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { l: 'Total Sales', v: `UGX ${fmt(closingReport.totalSales)}`, c: 'text-green-600' },
+                { l: 'Orders', v: `${closingReport.orderCount} (${closingReport.posCount} in-store, ${closingReport.onlineCount} online)`, c: 'text-gray-900 dark:text-white' },
+                { l: 'Expenses', v: `UGX ${fmt(closingReport.totalExpenses)}`, c: 'text-red-500' },
+                { l: 'Net Profit', v: `UGX ${fmt(closingReport.netProfit)}`, c: closingReport.netProfit >= 0 ? 'text-green-600' : 'text-red-600' },
+              ].map(s => (
+                <div key={s.l} className="bg-gray-50 dark:bg-gray-800 rounded-xl p-3">
+                  <p className="text-xs text-gray-500">{s.l}</p>
+                  <p className={`text-sm font-bold ${s.c}`}>{s.v}</p>
+                </div>
+              ))}
+            </div>
+            {closingReport.topItem && (
+              <p className="text-sm text-gray-600 dark:text-gray-300">🏆 Top seller: <strong>{closingReport.topItem.name}</strong> ({closingReport.topItem.unitsSold} sold)</p>
+            )}
+            <a
+              href={closingReport.whatsappUrl}
+              target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-green-500 hover:bg-green-600 text-white text-sm font-medium"
+            >
+              <MessageCircle size={15} /> Send to WhatsApp (0782 860372)
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );
