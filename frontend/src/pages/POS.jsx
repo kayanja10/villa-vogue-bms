@@ -17,6 +17,29 @@ const PAYMENT_METHODS = [
   { id: 'card', label: 'Card', icon: CreditCard, color: '#2980b9' },
 ];
 
+// Safely extract the primary image URL from a product's `images` JSON field.
+// Supports BOTH formats that exist in the database:
+//   Old:  '["https://...","https://..."]'                     (flat string array)
+//   New:  '[{"url":"https://...","label":"Front","isPrimary":true}, ...]'  (object array)
+// Without this, JSON.parse(p.images)[0] on the new format returns an object,
+// which renders as a blank image with no error — exactly the POS bug reported.
+function getPrimaryImageUrl(imagesJson) {
+  if (!imagesJson) return null;
+  try {
+    const parsed = JSON.parse(imagesJson);
+    if (!Array.isArray(parsed) || !parsed.length) return null;
+    // New format: array of objects — find the one marked primary, else first
+    if (typeof parsed[0] === 'object' && parsed[0] !== null) {
+      const primary = parsed.find(i => i.isPrimary) || parsed[0];
+      return primary?.url || null;
+    }
+    // Old format: array of plain string URLs
+    return parsed[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 export default function POS() {
   const qc = useQueryClient();
   const {
@@ -373,8 +396,8 @@ export default function POS() {
                       <div className="absolute top-2 left-2 w-5 h-5 bg-[#C9A96E] rounded-full flex items-center justify-center text-white text-[9px] font-bold">{inCart.quantity}</div>
                     )}
                     <div className="w-full aspect-square rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center mb-2 overflow-hidden">
-                      {p.images ? (
-                        <img src={JSON.parse(p.images)[0]} alt={p.name} className="w-full h-full object-cover rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
+                      {getPrimaryImageUrl(p.images) ? (
+                        <img src={getPrimaryImageUrl(p.images)} alt={p.name} className="w-full h-full object-cover rounded-lg" onError={e => { e.target.style.display = 'none'; }} />
                       ) : (
                         <Package size={24} className="text-gray-300" />
                       )}

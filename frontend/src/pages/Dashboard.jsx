@@ -46,7 +46,7 @@ function OnlineOrderBanner({ order, onDismiss }) {
           <span style={{ textTransform: 'capitalize' }}>{order.paymentMethod?.replace(/_/g, ' ')}</span>
         </p>
       </div>
-      <Link to="/orders" style={{ textDecoration: 'none' }}>
+      <Link to="/dashboard/orders" style={{ textDecoration: 'none' }}>
         <button style={{ background: '#25D366', color: '#fff', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
           View Order
         </button>
@@ -89,7 +89,7 @@ function PendingOrdersPopup({ orders, onClose, onDismissForSession }) {
         </div>
         <div className="p-4 pt-0 flex gap-2">
           <button onClick={onDismissForSession} className="btn-secondary flex-1 justify-center text-sm">Dismiss</button>
-          <Link to="/orders" className="flex-1" onClick={onClose}>
+          <Link to="/dashboard/orders" className="flex-1" onClick={onClose}>
             <button className="btn-primary w-full justify-center text-sm">Review Orders</button>
           </Link>
         </div>
@@ -320,7 +320,7 @@ export default function Dashboard() {
           <button onClick={() => setShowAI(!showAI)} className={`btn-primary text-sm ${showAI ? 'opacity-80' : ''}`}>
             <Sparkles size={15} /> AI Assistant
           </button>
-          <Link to="/pos" className="btn-primary text-sm"><ShoppingBag size={15} /> Open POS</Link>
+          <Link to="/dashboard/pos" className="btn-primary text-sm"><ShoppingBag size={15} /> Open POS</Link>
         </div>
       </div>
 
@@ -498,8 +498,8 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard label="Today's Sales" value={today.sales} icon={DollarSign} trend={month.salesGrowth} />
         <StatCard label="Today's Orders" value={today.orders} prefix="" icon={ShoppingBag} color="#2d7a4f" />
-        <StatCard label="Total Customers" value={cust.total} prefix="" icon={Users} color="#2980b9" to="/customers" />
-        <StatCard label="Products" value={inventory.totalProducts} prefix="" icon={Package} color="#8e44ad" to="/inventory" />
+        <StatCard label="Total Customers" value={cust.total} prefix="" icon={Users} color="#2980b9" to="/dashboard/customers" />
+        <StatCard label="Products" value={inventory.totalProducts} prefix="" icon={Package} color="#8e44ad" to="/dashboard/inventory" />
       </div>
 
       {/* ── SECONDARY STATS ── */}
@@ -516,7 +516,7 @@ export default function Dashboard() {
           </p>
           <p className="text-xs text-gray-400">After UGX {fmt(today.expenses)} expenses</p>
         </div>
-        <Link to="/inventory" className={`card p-4 ${inventory.lowStockCount > 0 ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800' : ''}`}>
+        <Link to="/dashboard/inventory" className={`card p-4 ${inventory.lowStockCount > 0 ? 'border-amber-200 bg-amber-50/50 dark:border-amber-800' : ''}`}>
           <p className="text-xs text-gray-500 mb-1">Low Stock</p>
           <p className={`text-xl font-heading font-bold ${inventory.lowStockCount > 0 ? 'text-amber-600' : 'text-gray-900 dark:text-white'}`}>
             {inventory.lowStockCount} items
@@ -604,7 +604,7 @@ export default function Dashboard() {
           </div>
 
           {/* Link to full analytics */}
-          <Link to="/analytics" className="mt-4 flex items-center justify-center gap-1 text-xs text-[#A8824A] hover:underline">
+          <Link to="/dashboard/analytics" className="mt-4 flex items-center justify-center gap-1 text-xs text-[#A8824A] hover:underline">
             Full Analytics <ArrowRight size={12} />
           </Link>
         </div>
@@ -614,7 +614,7 @@ export default function Dashboard() {
       <div className="card">
         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-gray-800">
           <h3 className="font-heading font-semibold text-gray-900 dark:text-white">Recent Orders</h3>
-          <Link to="/orders" className="text-[#C9A96E] text-sm hover:underline flex items-center gap-1">View all <ArrowRight size={13} /></Link>
+          <Link to="/dashboard/orders" className="text-[#C9A96E] text-sm hover:underline flex items-center gap-1">View all <ArrowRight size={13} /></Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">

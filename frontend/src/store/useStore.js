@@ -1,6 +1,24 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+// Safely extract the primary image URL from a product's `images` JSON field.
+// Supports BOTH the old flat string-array format and the new object-array
+// format (with label/isPrimary) used by the multi-image Inventory upload.
+function getPrimaryImageUrl(imagesJson) {
+  if (!imagesJson) return null;
+  try {
+    const parsed = JSON.parse(imagesJson);
+    if (!Array.isArray(parsed) || !parsed.length) return null;
+    if (typeof parsed[0] === 'object' && parsed[0] !== null) {
+      const primary = parsed.find(i => i.isPrimary) || parsed[0];
+      return primary?.url || null;
+    }
+    return parsed[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 export const useStore = create(
   persist(
     (set, get) => ({
@@ -79,7 +97,7 @@ export const useStore = create(
                 costPrice: product.costPrice || 0,
                 quantity:  qty,
                 stock:     product.stock,
-                image:     product.images ? JSON.parse(product.images)[0] : null,
+                image:     getPrimaryImageUrl(product.images),
               },
             ],
           });

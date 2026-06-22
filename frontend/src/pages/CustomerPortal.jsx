@@ -1524,7 +1524,7 @@ const OrderTracking = ({orders=[]}) => {
   );
 };
 
-const LoyaltySection = ({user}) => {
+const LoyaltySection = ({user,onJoinClick}) => {
   const trs=[
     {n:"Bronze",p:"0–999",c:"t1",pk:["5% cashback","Birthday reward"]},
     {n:"Silver",p:"1K–4.9K",c:"t2",pk:["8% cashback","Free shipping","Early access"]},
@@ -1563,7 +1563,7 @@ const LoyaltySection = ({user}) => {
           ))}
         </div>
         {!user&&<Reveal delay={.3}><div style={{textAlign:"center",marginTop:44}}>
-          <a href="/register"><motion.button className="bg" whileHover={{scale:1.03}} whileTap={{scale:.97}} style={{padding:"14px 36px",fontSize:13,display:"inline-flex",alignItems:"center",gap:7}}><IC n="gift" sz={15}/> Join Rewards — It's Free</motion.button></a>
+          <motion.button onClick={onJoinClick} className="bg" whileHover={{scale:1.03}} whileTap={{scale:.97}} style={{padding:"14px 36px",fontSize:13,display:"inline-flex",alignItems:"center",gap:7}}><IC n="gift" sz={15}/> Join Rewards — It's Free</motion.button>
         </div></Reveal>}
       </div>
     </section>
@@ -2238,7 +2238,7 @@ const PortalShell = ({
         <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/></div>
         <AboutSection/>
         <OrderTracking orders={orders}/>
-        <LoyaltySection user={user}/>
+        <LoyaltySection user={user} onJoinClick={()=>{setStaffMode(false);setLoginOpen(true);}}/>
         <Testimonials/>
         <Newsletter/>
       </main>
