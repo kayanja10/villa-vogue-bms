@@ -7,6 +7,7 @@ import { useSocket } from './hooks/useSocket';
 import { useSessionManager } from './hooks/useSessionManager';
 import Layout from './components/layout/Layout';
 import Login from './pages/Login';
+import TrackOrder from './pages/TrackOrder';
 import Dashboard from './pages/Dashboard';
 import POS from './pages/POS';
 import Reports from './pages/Reports';
@@ -166,6 +167,8 @@ export default function App() {
           <Route path="/" element={<CustomerPortalWrapper />} />
           {/* /store — kept as an alias so any previously shared /store links still work */}
           <Route path="/store/*" element={<CustomerPortalWrapper />} />
+          {/* /track — public order tracking, no login required */}
+          <Route path="/track" element={<TrackOrder />} />
 
           {/* /login — staff only; redirects to /dashboard if already logged in.
               The portal has a "Staff Login" button that links here directly. */}

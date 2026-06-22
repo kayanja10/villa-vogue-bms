@@ -1654,7 +1654,7 @@ const Footer = () => (
         {[
           {t:"Shop",l:["New Arrivals","Best Sellers","Wedding","Corporate","Accessories","Sale"]},
           {t:"Account",l:["Sign In","Register","My Orders","Wishlist","Loyalty Rewards","Gift Cards"]},
-          {t:"Support",l:["Contact Us","Size Guide","Returns","Shipping Info","FAQs","Track Order"]},
+          {t:"Support",l:["Contact Us","Size Guide","Returns","Shipping Info","FAQs"]},
         ].map(col=>(
           <div key={col.t}>
             <p className="ll" style={{marginBottom:16}}>{col.t}</p>
@@ -1664,6 +1664,11 @@ const Footer = () => (
                   onMouseEnter={e=>e.target.style.color="var(--gold)"}
                   onMouseLeave={e=>e.target.style.color="var(--tm)"}>{lk}</a>
               ))}
+              {col.t==="Support"&&(
+                <a href="/track" style={{fontSize:13,color:"var(--tm)",textDecoration:"none",transition:"color .2s"}}
+                  onMouseEnter={e=>e.target.style.color="var(--gold)"}
+                  onMouseLeave={e=>e.target.style.color="var(--tm)"}>Track Order</a>
+              )}
             </div>
           </div>
         ))}

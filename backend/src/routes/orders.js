@@ -260,9 +260,43 @@ router.get('/track/:orderNumber', async (req, res) => {
       select: {
         orderNumber: true, orderStatus: true, paymentStatus: true,
         total: true, createdAt: true, customerName: true, notes: true,
+        items: true, paymentMethod: true, orderSource: true,
       },
     });
     if (!order) return res.status(404).json({ error: 'Order not found. Check your order number and try again.' });
+    // Parse items count without exposing internal product IDs unnecessarily
+    let itemCount = 0;
+    try { itemCount = JSON.parse(order.items || '[]').length; } catch {}
+    res.json({ ...order, itemCount, items: undefined });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT /api/orders/:id/mark-paid — quick action for staff confirming manual MoMo/cash payment
+router.put('/:id/mark-paid', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const order = await prisma.order.update({
+      where: { id: parseInt(req.params.id) },
+      data: { paymentStatus: 'paid' },
+    });
+
+    await prisma.activityLog.create({
+      data: {
+        userId: req.user.id, username: req.user.username,
+        action: 'mark_order_paid', entityType: 'order', entityId: String(order.id),
+        details: JSON.stringify({ orderNumber: order.orderNumber, total: order.total }),
+      },
+    }).catch(() => {});
+
+    global.io?.emit('order:updated', order);
+    if (order.customerId) {
+      global.io?.to(`customer:${order.customerId}`).emit('order:status-changed', {
+        orderId: order.id, orderNumber: order.orderNumber,
+        paymentStatus: 'paid', updatedAt: new Date(),
+      });
+    }
+
     res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
