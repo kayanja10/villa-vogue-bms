@@ -79,8 +79,17 @@ const useToast = () => useContext(ToastCtx);
       .mm{position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:var(--bgs);backdrop-filter:blur(32px);border:1px solid var(--br);border-radius:var(--rxl);box-shadow:var(--sl);min-width:560px;padding:24px;z-index:999}
       @keyframes hp{0%{transform:scale(1)}50%{transform:scale(1.4)}100%{transform:scale(1)}}.hp{animation:hp .35s ease}
       .t1{background:linear-gradient(135deg,#8B5E3C,#C4895A)}.t2{background:linear-gradient(135deg,#71787F,#B0B8C1)}.t3{background:linear-gradient(135deg,var(--gold-d),var(--gold-l))}.t4{background:linear-gradient(135deg,#3A3A3A,#888)}.t5{background:linear-gradient(135deg,#1a0533,#7B2FBE)}
-      .wf{position:fixed;bottom:28px;right:28px;z-index:1500;width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 30px rgba(37,211,102,.45);cursor:pointer;transition:var(--tr);text-decoration:none}
+      .wf{position:fixed;bottom:calc(28px + env(safe-area-inset-bottom));right:28px;z-index:1500;width:58px;height:58px;border-radius:50%;background:#25D366;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 30px rgba(37,211,102,.45);cursor:pointer;transition:var(--tr);text-decoration:none}
       .wf:hover{transform:scale(1.12);box-shadow:0 12px 40px rgba(37,211,102,.55)}
+      .sic{width:40px;height:40px;border-radius:50%;background:var(--bc);border:1px solid var(--br);display:flex;align-items:center;justify-content:center;color:var(--tp);text-decoration:none;transition:var(--tr)}
+      .sic:hover{background:var(--gold);border-color:var(--gold);color:#000;transform:translateY(-3px)}
+      .fl{font-size:13px;color:var(--tm);text-decoration:none;transition:var(--tr)}
+      .fl:hover{color:var(--gold)}
+      .stt{position:fixed;bottom:calc(28px + env(safe-area-inset-bottom));left:28px;z-index:1500;width:46px;height:46px;border-radius:50%;background:var(--bgs);border:1px solid var(--brg);display:flex;align-items:center;justify-content:center;color:var(--gold);cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.18);transition:var(--tr)}
+      .stt:hover{background:var(--gold);color:#000;transform:translateY(-3px)}
+      .vfg{display:grid;grid-template-columns:minmax(230px,1.4fr) repeat(3,minmax(150px,1fr));gap:44px}
+      @media(max-width:680px){.vfg{grid-template-columns:1fr}}
+      @media(min-width:681px) and (max-width:980px){.vfg{grid-template-columns:1fr 1fr}}
       .tt{width:48px;height:26px;background:var(--ib);border:1px solid var(--br);border-radius:50px;cursor:pointer;position:relative;transition:var(--tr);flex-shrink:0}
       .tt.dark{background:rgba(201,168,76,.2);border-color:var(--gold)}.tt-th{position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--gold);transition:transform .3s cubic-bezier(.4,0,.2,1)}.tt.dark .tt-th{transform:translateX(22px)}
       .vf{background:var(--bs);border-top:1px solid var(--br);padding:60px 0 30px}
@@ -127,6 +136,9 @@ const IC = ({ n, sz=20, c="currentColor" }) => {
     staff:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>,
     tag:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>,
     wa:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>,
+    fb:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M22 12.06C22 6.51 17.52 2 12 2S2 6.51 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.91c0-2.51 1.49-3.89 3.77-3.89 1.09 0 2.23.2 2.23.2v2.46h-1.26c-1.24 0-1.63.78-1.63 1.57v1.88h2.78l-.45 2.91h-2.33V22c4.78-.76 8.44-4.92 8.44-9.94z"/></svg>,
+    tiktok:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M16.6 5.82c-.94-.83-1.49-2.02-1.49-3.32h-3.08v12.34c0 1.4-1.14 2.55-2.55 2.55-1.4 0-2.55-1.14-2.55-2.55 0-1.4 1.14-2.55 2.55-2.55.27 0 .53.04.77.12V9.32c-.25-.03-.5-.05-.77-.05-3.1 0-5.62 2.52-5.62 5.62 0 3.1 2.52 5.62 5.62 5.62 3.1 0 5.62-2.52 5.62-5.62V9.01a7.34 7.34 0 0 0 4.31 1.39V7.32c-1.04 0-2.07-.34-2.81-.97-.32-.27-.31-.27 0 0z"/></svg>,
+    up:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2.2" viewBox="0 0 24 24"><polyline points="18 15 12 9 6 15"/></svg>,
   };
   return <span style={{display:"inline-flex",alignItems:"center"}}>{ic[n]||null}</span>;
 };
@@ -1245,6 +1257,41 @@ const HeroSection = ({onShopNow}) => {
   );
 };
 
+// ── Why Villa Vogue Section ───────────────────────────────────────────────────
+const WhyVillaVogue = () => {
+  const feats=[
+    {ic:"award",t:"Premium Quality",d:"Every piece is curated and quality-checked, so what you order is exactly what you wear."},
+    {ic:"tag",t:"Affordable Luxury",d:"Luxury fashion priced for real Ugandan budgets — no compromise on style."},
+    {ic:"pin",t:"Ugandan Fashion",d:"Designed with the Kampala lifestyle in mind, by a team that lives it every day."},
+    {ic:"truck",t:"Nationwide Delivery",d:"From Kampala to every corner of Uganda — your order reaches you, wherever you are."},
+  ];
+  return (
+    <section style={{padding:"80px 0",background:"var(--bp)"}}>
+      <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
+        <Reveal>
+          <div style={{textAlign:"center",marginBottom:50}}>
+            <span className="ll">The Villa Vogue Difference</span>
+            <h2 className="sl" style={{fontSize:"clamp(30px,4vw,48px)",marginTop:10}}>Why Villa Vogue?</h2>
+          </div>
+        </Reveal>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:22}}>
+          {feats.map((f,i)=>(
+            <Reveal key={f.t} delay={i*.08}>
+              <div className="gc" style={{padding:"32px 26px",textAlign:"center",height:"100%"}}>
+                <div style={{width:56,height:56,borderRadius:"50%",background:"rgba(201,168,76,.12)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 18px"}}>
+                  <IC n={f.ic} sz={24} c="var(--gold)"/>
+                </div>
+                <h3 style={{fontFamily:"var(--fd)",fontSize:19,fontWeight:400,marginBottom:8}}>{f.t}</h3>
+                <p style={{fontSize:13,color:"var(--tm)",lineHeight:1.7}}>{f.d}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
+
 // ── About / Founder Section ──────────────────────────────────────────────────
 const AboutSection = () => (
   <section style={{padding:"80px 0",background:"var(--bp)"}}>
@@ -1641,7 +1688,7 @@ const Newsletter = () => {
 const Footer = () => (
   <footer className="vf">
     <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(183px,1fr))",gap:44,marginBottom:44}}>
+      <div className="vfg" style={{marginBottom:44}}>
         <div>
           <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:300,letterSpacing:".2em",marginBottom:5}}>VILLA VOGUE</div>
           <div style={{fontSize:9,letterSpacing:".3em",color:"var(--gold)",textTransform:"uppercase",marginBottom:18}}>Luxury Fashion Uganda</div>
@@ -1650,6 +1697,17 @@ const Footer = () => (
             style={{display:"inline-flex",alignItems:"center",gap:7,marginTop:18,padding:"9px 16px",background:"#25D366",color:"#fff",borderRadius:50,textDecoration:"none",fontSize:12,fontWeight:600}}>
             <IC n="wa" sz={14} c="#fff"/> Chat on WhatsApp
           </a>
+          <p className="ll" style={{marginTop:20,marginBottom:10}}>Follow Us</p>
+          <div style={{display:"flex",gap:10}}>
+            <a href="https://vt.tiktok.com/ZSC1wj67U/" target="_blank" rel="noopener noreferrer"
+              className="sic" title="Follow us on TikTok" aria-label="Villa Vogue on TikTok">
+              <IC n="tiktok" sz={17}/>
+            </a>
+            <a href="https://www.facebook.com/profile.php?id=61571174365887" target="_blank" rel="noopener noreferrer"
+              className="sic" title="Follow us on Facebook" aria-label="Villa Vogue on Facebook">
+              <IC n="fb" sz={17}/>
+            </a>
+          </div>
         </div>
         {[
           {t:"Shop",l:["New Arrivals","Best Sellers","Wedding","Corporate","Accessories","Sale"]},
@@ -1660,14 +1718,10 @@ const Footer = () => (
             <p className="ll" style={{marginBottom:16}}>{col.t}</p>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
               {col.l.map(lk=>(
-                <a key={lk} href="#" style={{fontSize:13,color:"var(--tm)",textDecoration:"none",transition:"color .2s"}}
-                  onMouseEnter={e=>e.target.style.color="var(--gold)"}
-                  onMouseLeave={e=>e.target.style.color="var(--tm)"}>{lk}</a>
+                <a key={lk} href="#" className="fl">{lk}</a>
               ))}
               {col.t==="Support"&&(
-                <a href="/track" style={{fontSize:13,color:"var(--tm)",textDecoration:"none",transition:"color .2s"}}
-                  onMouseEnter={e=>e.target.style.color="var(--gold)"}
-                  onMouseLeave={e=>e.target.style.color="var(--tm)"}>Track Order</a>
+                <a href="/track" className="fl">Track Order</a>
               )}
             </div>
           </div>
@@ -1675,12 +1729,10 @@ const Footer = () => (
       </div>
       <div className="gd" style={{marginBottom:26}}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
-        <p style={{fontSize:12,color:"var(--tm)"}}>© 2025 Villa Vogue Fashions. All rights reserved.</p>
+        <p style={{fontSize:12,color:"var(--tm)"}}>© {new Date().getFullYear()} Villa Vogue Fashions. All rights reserved.</p>
         <div style={{display:"flex",gap:18}}>
           {["Privacy","Terms","Cookies"].map(lk=>(
-            <a key={lk} href="#" style={{fontSize:12,color:"var(--tm)",textDecoration:"none"}}
-              onMouseEnter={e=>e.target.style.color="var(--gold)"}
-              onMouseLeave={e=>e.target.style.color="var(--tm)"}>{lk}</a>
+            <a key={lk} href="#" className="fl" style={{fontSize:12}}>{lk}</a>
           ))}
         </div>
       </div>
@@ -2173,6 +2225,24 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
   );
 };
 
+const ScrollToTop = () => {
+  const {scrollY}=useScroll();
+  const [show,setShow]=useState(false);
+  useEffect(()=>{const u=scrollY.onChange(v=>setShow(v>500));return u;},[scrollY]);
+  return (
+    <AnimatePresence>
+      {show&&(
+        <motion.button className="stt" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}
+          initial={{scale:0,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:0,opacity:0}}
+          whileHover={{scale:1.1}} transition={{type:"spring"}}
+          title="Back to top" aria-label="Scroll back to top">
+          <IC n="up" sz={20}/>
+        </motion.button>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const WhatsAppFloat = () => (
   <motion.a href="https://wa.me/256782860372?text=Hello! I need help with a Villa Vogue order."
     target="_blank" rel="noopener noreferrer" className="wf"
@@ -2239,6 +2309,7 @@ const PortalShell = ({
         onAccountOpen={()=>setAcctOpen(true)}/>
       <main>
         <HeroSection onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
+        <WhyVillaVogue/>
         <CollectionsSection/>
         <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/></div>
         <AboutSection/>
@@ -2258,6 +2329,7 @@ const PortalShell = ({
       <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
         onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
       <WhatsAppFloat/>
+      <ScrollToTop/>
     </div>
   );
 };
