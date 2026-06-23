@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Barcode from '../components/Barcode';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, Eye, Edit, Trash2, Download, X, Save, Check,
@@ -116,7 +117,9 @@ export function Orders() {
     ${order.discount > 0 ? `<table><tr><td>Discount:</td><td style="text-align:right">-UGX ${Number(order.discount).toLocaleString()}</td></tr></table>` : ''}
     <table><tr class="b"><td>TOTAL:</td><td style="text-align:right">UGX ${Number(order.total).toLocaleString()}</td></tr>
     <tr><td>Payment:</td><td style="text-align:right">${order.paymentMethod?.replace(/_/g,' ').toUpperCase()}</td></tr></table>
-    <hr class="hr"/><div class="c"><div>Thank you for shopping at</div><div class="b">Villa Vogue Fashions!</div></div>
+    <hr class="hr"/><div class="c"><div>Thank you for shopping at</div><div class="b">Villa Vogue Fashions!</div>
+    <div style="margin-top:8px;font-size:10px">Follow us:</div>
+    <div style="font-size:10px">📘 fb.com/villavoguefashions &nbsp; 🎵 @villavogue (TikTok)</div></div>
     <script>window.onload=()=>{window.print();setTimeout(window.close,500)}</script></body></html>`);
     w.document.close();
   };
@@ -482,10 +485,12 @@ export function Inventory() {
   const [editProd, setEditProd] = useState(null);
   const [adjustProd, setAdjustProd] = useState(null);
   const [previewProd, setPreviewProd] = useState(null);
-  const [form, setForm] = useState({ name:'', price:'', costPrice:'', stock:'', categoryId:'', description:'', sku:'', lowStockThreshold:'5' });
+  const [form, setForm] = useState({ name:'', price:'', costPrice:'', stock:'', categoryId:'', description:'', sku:'', barcode:'', lowStockThreshold:'5' });
   const [adjustForm, setAdjustForm] = useState({ type:'in', quantity:'', reason:'' });
   const [images, setImages] = useState([]); // [{url, label, isPrimary}]
   const [skuLoading, setSkuLoading] = useState(false);
+  const [barcodeLoading, setBarcodeLoading] = useState(false);
+  const [printProd, setPrintProd] = useState(null); // product currently being printed as a label
 
   const { data } = useQuery({ queryKey: ['products', search], queryFn: () => apiLib.products.list({ search, limit: 200 }).then(r => r.data) });
   const { data: cats } = useQuery({ queryKey: ['categories'], queryFn: () => apiLib.categories.list().then(r => r.data) });
@@ -503,17 +508,34 @@ export function Inventory() {
     finally { setSkuLoading(false); }
   };
 
+  // Auto-fetch the next barcode when opening "Add Product"
+  const fetchNextBarcode = async () => {
+    setBarcodeLoading(true);
+    try {
+      const res = await apiLib.products.nextBarcode?.() ?? { data: { barcode: '' } };
+      if (res?.data?.barcode) ff('barcode', res.data.barcode);
+    } catch { /* barcode stays blank — backend will auto-generate on save anyway */ }
+    finally { setBarcodeLoading(false); }
+  };
+
   const openAdd = () => {
-    setForm({ name:'', price:'', costPrice:'', stock:'', categoryId:'', description:'', sku:'', lowStockThreshold:'5' });
+    setForm({ name:'', price:'', costPrice:'', stock:'', categoryId:'', description:'', sku:'', barcode:'', lowStockThreshold:'5' });
     setImages([]);
     setShowAdd(true);
     fetchNextSku('');
+    fetchNextBarcode();
   };
 
   const createProd = useMutation({
     mutationFn: (d) => apiLib.products.create({ ...d, images }),
-    onSuccess: () => { toast.success('Product created!'); setShowAdd(false); setForm({name:'',price:'',costPrice:'',stock:'',categoryId:'',description:'',sku:'',lowStockThreshold:'5'}); setImages([]); qc.invalidateQueries(['products']); },
+    onSuccess: () => { toast.success('Product created!'); setShowAdd(false); setForm({name:'',price:'',costPrice:'',stock:'',categoryId:'',description:'',sku:'',barcode:'',lowStockThreshold:'5'}); setImages([]); qc.invalidateQueries(['products']); },
     onError: e => toast.error(e.response?.data?.error||'Failed to create'),
+  });
+
+  const generateBarcodeMut = useMutation({
+    mutationFn: (id) => apiLib.products.generateBarcode(id),
+    onSuccess: () => { toast.success('Barcode generated!'); qc.invalidateQueries(['products']); },
+    onError: e => toast.error(e.response?.data?.error||'Failed to generate barcode'),
   });
 
   const updateProd = useMutation({
@@ -546,7 +568,7 @@ export function Inventory() {
   const openEdit = (p) => {
     setEditProd(p);
     setImages(parseProductImages(p));
-    setForm({ name:p.name, price:p.price, costPrice:p.costPrice||'', stock:p.stock, categoryId:p.categoryId||'', description:p.description||'', sku:p.sku||'', lowStockThreshold:p.lowStockThreshold||5 });
+    setForm({ name:p.name, price:p.price, costPrice:p.costPrice||'', stock:p.stock, categoryId:p.categoryId||'', description:p.description||'', sku:p.sku||'', barcode:p.barcode||'', lowStockThreshold:p.lowStockThreshold||5 });
   };
 
   const margin = form.price && form.costPrice
@@ -605,6 +627,7 @@ export function Inventory() {
                       <div className="flex gap-1">
                         <button onClick={() => { setAdjustProd(p); setAdjustForm({type:'in',quantity:'',reason:''}); }} className="btn-ghost py-1 px-2 text-xs" title="Adjust Stock"><Package size={13}/></button>
                         <button onClick={() => openEdit(p)} className="btn-ghost py-1 px-2 text-xs" title="Edit"><Edit size={13}/></button>
+                        {p.barcode && <button onClick={() => setPrintProd(p)} className="btn-ghost py-1 px-2 text-xs" title="Print Barcode Label"><Printer size={13}/></button>}
                         <button onClick={() => window.confirm('Remove product?') && deleteProd.mutate(p.id)} className="btn-ghost py-1 px-2 text-xs text-red-500" title="Delete"><Trash2 size={13}/></button>
                       </div>
                     </td>
@@ -628,6 +651,15 @@ export function Inventory() {
               <label className="label">SKU / Code <span className="text-gray-400 font-normal">(auto-generated)</span></label>
               <input className="input" value={skuLoading ? 'Generating…' : form.sku} onChange={e => ff('sku',e.target.value)} placeholder="Auto-generated on save" disabled={skuLoading}/>
             </div>
+            <div>
+              <label className="label">Barcode <span className="text-gray-400 font-normal">(auto-generated)</span></label>
+              <input className="input font-mono" value={barcodeLoading ? 'Generating…' : form.barcode} onChange={e => ff('barcode',e.target.value)} placeholder="Auto-generated on save" disabled={barcodeLoading}/>
+            </div>
+            {form.barcode && !barcodeLoading && (
+              <div className="col-span-2 flex justify-center py-2 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                <Barcode value={form.barcode} width={200} height={60} />
+              </div>
+            )}
             <div><label className="label">Category</label><select className="input" value={form.categoryId} onChange={e => { ff('categoryId',e.target.value); fetchNextSku(e.target.value); }}><option value="">Select category</option>{cats?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
             <div><label className="label">Selling Price (UGX) *</label><input className="input" type="number" value={form.price} onChange={e => ff('price',e.target.value)}/></div>
             <div><label className="label">Cost Price (UGX)</label><input className="input" type="number" value={form.costPrice} onChange={e => ff('costPrice',e.target.value)}/></div>
@@ -653,6 +685,25 @@ export function Inventory() {
           <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
             <div className="col-span-2"><label className="label">Product Name</label><input className="input" value={form.name} onChange={e => ff('name',e.target.value)}/></div>
             <div><label className="label">SKU</label><input className="input" value={form.sku} onChange={e => ff('sku',e.target.value)}/></div>
+            <div>
+              <label className="label">Barcode</label>
+              {editProd?.barcode ? (
+                <input className="input font-mono" value={form.barcode} onChange={e => ff('barcode',e.target.value)}/>
+              ) : (
+                <button type="button" onClick={() => generateBarcodeMut.mutate(editProd.id)} disabled={generateBarcodeMut.isPending}
+                  className="w-full px-3.5 py-2.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-500 hover:border-[#C9A96E] hover:text-[#A8824A] transition-colors">
+                  {generateBarcodeMut.isPending ? 'Generating…' : '+ Generate Barcode'}
+                </button>
+              )}
+            </div>
+            {form.barcode && (
+              <div className="col-span-2 flex flex-col items-center gap-3 py-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+                <Barcode value={form.barcode} width={220} height={70} />
+                <button type="button" onClick={() => setPrintProd(editProd)} className="btn-secondary py-1.5 px-3 text-xs">
+                  <Printer size={13}/> Print Label
+                </button>
+              </div>
+            )}
             <div><label className="label">Selling Price</label><input className="input" type="number" value={form.price} onChange={e => ff('price',e.target.value)}/></div>
             <div><label className="label">Cost Price</label><input className="input" type="number" value={form.costPrice} onChange={e => ff('costPrice',e.target.value)}/></div>
             <div><label className="label">Category</label><select className="input" value={form.categoryId} onChange={e => ff('categoryId',e.target.value)}><option value="">None</option>{cats?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
@@ -693,7 +744,71 @@ export function Inventory() {
       <Modal open={!!previewProd} onClose={() => setPreviewProd(null)} title={previewProd?.name || 'Product Images'}>
         {previewProd && <ImagePreviewGallery product={previewProd} />}
       </Modal>
+
+      {/* Print Barcode Label Modal — designed for 58mm thermal label printers */}
+      {printProd && (
+        <BarcodeLabelPrint product={printProd} onClose={() => setPrintProd(null)} />
+      )}
     </Page>
+  );
+}
+
+// Print-friendly barcode label — opens a clean popup window sized for
+// standard 58mm thermal label printers, with the product name, price,
+// and scannable barcode. Falls back gracefully on any printer/paper size.
+function BarcodeLabelPrint({ product, onClose }) {
+  useEffect(() => {
+    const w = window.open('', '_blank', 'width=320,height=260');
+    const bits = (() => {
+      // Re-encode here since this is a fresh window without React context
+      const L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'];
+      const G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'];
+      const R=['1110010','1100110','1101100','1000010','1011100','1001110','1010000','1000100','1001000','1110100'];
+      const P=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
+      const code = product.barcode;
+      if (!code || !/^\d{13}$/.test(code)) return null;
+      const parity = P[parseInt(code[0],10)];
+      let b = '101';
+      for (let i=1;i<=6;i++) { const d=parseInt(code[i],10); b += parity[i-1]==='L' ? L[d] : G[d]; }
+      b += '01010';
+      for (let i=7;i<=12;i++) { const d=parseInt(code[i],10); b += R[d]; }
+      b += '101';
+      return b;
+    })();
+
+    const barWidth = 1.6;
+    const barsHtml = bits ? bits.split('').map((bit,i) => bit==='1' ? `<rect x="${i*barWidth}" y="0" width="${barWidth}" height="50" fill="#000"/>` : '').join('') : '';
+    const svgWidth = bits ? bits.length * barWidth : 200;
+
+    w.document.write(`<!DOCTYPE html><html><head><title>Barcode Label</title>
+      <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: Arial, sans-serif; padding: 12px; width: 280px; }
+        .label { text-align: center; border: 1px dashed #ccc; padding: 10px; }
+        .name { font-size: 13px; font-weight: bold; margin-bottom: 4px; word-wrap: break-word; }
+        .price { font-size: 16px; font-weight: bold; color: #000; margin-bottom: 8px; }
+        .code { font-family: monospace; font-size: 12px; letter-spacing: 2px; margin-top: 4px; }
+        .brand { font-size: 9px; color: #888; margin-top: 6px; letter-spacing: 1px; }
+      </style></head><body>
+      <div class="label">
+        <div class="name">${product.name}</div>
+        <div class="price">UGX ${Number(product.price).toLocaleString()}</div>
+        ${bits ? `<svg width="${svgWidth}" height="50" viewBox="0 0 ${svgWidth} 50">${barsHtml}</svg><div class="code">${product.barcode}</div>` : '<div style="font-size:11px;color:#999">No barcode</div>'}
+        <div class="brand">VILLA VOGUE FASHIONS</div>
+      </div>
+      <script>window.onload=()=>{window.print();}</script>
+      </body></html>`);
+    w.document.close();
+  }, [product]);
+
+  return (
+    <Modal open={true} onClose={onClose} title="Printing Label…">
+      <div className="text-center py-8 text-sm text-gray-500">
+        <Printer size={32} className="mx-auto mb-3 text-[#C9A96E]" />
+        A print window has opened for <strong>{product.name}</strong>.<br/>
+        If it didn't open, check your browser's popup blocker.
+      </div>
+    </Modal>
   );
 }
 

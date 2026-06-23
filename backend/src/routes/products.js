@@ -4,6 +4,40 @@ const { PrismaClient } = require('@prisma/client');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const prisma = new PrismaClient();
 
+// ── Auto-generate Barcode (EAN-13 format with real check digit) ──────────────
+// Uses prefix "200" — the GS1 "restricted circulation" range officially
+// reserved for in-store/internal use, so generated codes never collide with
+// real retail products if you ever stock branded items with their own barcodes.
+// Format: 200 + 9-digit sequence + 1 check digit = 13 digits total, fully
+// scannable by any standard barcode scanner or phone camera app.
+function ean13CheckDigit(digits12) {
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const d = parseInt(digits12[i], 10);
+    sum += (i % 2 === 0) ? d : d * 3;
+  }
+  return (10 - (sum % 10)) % 10;
+}
+
+async function generateBarcode() {
+  // Find the highest existing sequence among our own generated codes
+  const existing = await prisma.product.findMany({
+    where: { barcode: { startsWith: '200' } },
+    select: { barcode: true },
+  });
+  let maxSeq = 0;
+  for (const p of existing) {
+    if (p.barcode?.length === 13) {
+      const seq = parseInt(p.barcode.slice(3, 12), 10);
+      if (!isNaN(seq)) maxSeq = Math.max(maxSeq, seq);
+    }
+  }
+  const nextSeq = String(maxSeq + 1).padStart(9, '0');
+  const digits12 = `200${nextSeq}`;
+  const checkDigit = ean13CheckDigit(digits12);
+  return `${digits12}${checkDigit}`;
+}
+
 // ── Auto-generate SKU ─────────────────────────────────────────────────────────
 // Format: VV-{CATEGORY3}-{SEQ4}  e.g. VV-DRE-0001, VV-GEN-0042 (no category)
 async function generateSku(categoryId) {
@@ -106,6 +140,45 @@ router.get('/next-sku', authenticate, requireManagerOrAdmin, async (req, res) =>
   }
 });
 
+// GET /api/products/next-barcode — preview the next auto-generated barcode
+router.get('/next-barcode', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const barcode = await generateBarcode();
+    res.json({ barcode });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/products/:id/generate-barcode — backfill a barcode for an
+// existing product that was created before this feature existed
+router.post('/:id/generate-barcode', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: parseInt(req.params.id) } });
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (product.barcode) return res.status(400).json({ error: 'Product already has a barcode' });
+    const barcode = await generateBarcode();
+    const updated = await prisma.product.update({ where: { id: product.id }, data: { barcode } });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/products/barcode/:code — look up a product by scanned barcode (for POS)
+router.get('/barcode/:code', authenticate, async (req, res) => {
+  try {
+    const product = await prisma.product.findUnique({
+      where: { barcode: req.params.code },
+      include: { category: true },
+    });
+    if (!product) return res.status(404).json({ error: 'No product found for this barcode' });
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/products/:id
 router.get('/:id', authenticate, async (req, res) => {
   try {
@@ -127,9 +200,11 @@ router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
 
     // Auto-generate SKU if not provided (or blank) — guarantees every product has one
     const finalSku = sku && sku.trim() ? sku.trim() : await generateSku(categoryId);
+    // Auto-generate barcode if not provided — guarantees every product is scannable
+    const finalBarcode = barcode && barcode.trim() ? barcode.trim() : await generateBarcode();
 
     const product = await prisma.product.create({
-      data: { name, sku: finalSku, barcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },
+      data: { name, sku: finalSku, barcode: finalBarcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },
       include: { category: true },
     });
 

@@ -55,6 +55,9 @@ export const products = {
   adjustStock: (id,d) => api.post(`/products/${id}/adjust-stock`, d),
   lowStock:    ()     => api.get('/products/low-stock'),
   nextSku:     (categoryId) => api.get('/products/next-sku', { params: { categoryId } }),
+  nextBarcode: ()           => api.get('/products/next-barcode'),
+  generateBarcode: (id)     => api.post(`/products/${id}/generate-barcode`),
+  lookupByBarcode: (code)   => api.get(`/products/barcode/${code}`),
 };
 
 export const orders = {

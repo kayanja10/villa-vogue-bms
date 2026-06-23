@@ -53,6 +53,15 @@ export default function POS() {
   const [catFilter, setCatFilter] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
   const [step, setStep] = useState('cart');
+  // ── Barcode scanner detection ──────────────────────────────────────────────
+  // USB/Bluetooth barcode scanners work by "typing" the scanned digits very
+  // fast (each keystroke under ~30ms apart) and then sending Enter. A human
+  // typing in the search box never types that fast, so timing the gap between
+  // keystrokes reliably tells scanned input apart from manual typing without
+  // needing any special scanner SDK or hardware permissions.
+  const lastKeyTime = useRef(0);
+  const scanBuffer = useRef('');
+  const searchInputRef = useRef(null);
   const [lastOrder, setLastOrder] = useState(null);
   const [lastCart, setLastCart] = useState([]);
   const [momoPhone, setMomoPhone] = useState('');
@@ -84,6 +93,51 @@ export default function POS() {
     queryFn: () => customers.list({ search: customerSearch, limit: 5 }).then(r => r.data),
     enabled: customerSearch.length > 1 && isOnline,
   });
+
+  // ── Barcode lookup — fires when a scan is detected, finds the exact product
+  // and adds it straight to cart without the cashier needing to click anything
+  const barcodeLookup = useMutation({
+    mutationFn: (code) => productApi.lookupByBarcode(code).then(r => r.data),
+    onSuccess: (product) => {
+      if (product.stock <= 0) {
+        toast.error(`${product.name} is out of stock`);
+      } else {
+        addToCart(product);
+        toast.success(`✓ ${product.name} added`, { icon: '🛍️' });
+      }
+      setSearch('');
+    },
+    onError: () => {
+      toast.error('No product found for that barcode');
+      setSearch('');
+    },
+  });
+
+  // Detects fast, scanner-style keystrokes vs normal human typing.
+  // Called on every keystroke in the search box.
+  const handleSearchKeyDown = (e) => {
+    const now = Date.now();
+    const gap = now - lastKeyTime.current;
+    lastKeyTime.current = now;
+
+    if (e.key === 'Enter') {
+      // A scanner always finishes with Enter. If the buffered text looks like
+      // a barcode (digits only, 8-13 chars — covers EAN-8/UPC-A/EAN-13) and it
+      // was typed fast, treat it as a scan rather than a manual search.
+      const candidate = scanBuffer.current || search;
+      const looksLikeBarcode = /^\d{8,13}$/.test(candidate);
+      if (looksLikeBarcode) {
+        e.preventDefault();
+        barcodeLookup.mutate(candidate);
+      }
+      scanBuffer.current = '';
+      return;
+    }
+
+    // Reset the buffer if the gap is too long (human typing pace)
+    if (gap > 80) scanBuffer.current = '';
+    if (e.key.length === 1) scanBuffer.current += e.key;
+  };
 
   const createOrder = useMutation({
     mutationFn: (d) => orders.create(d),
@@ -338,7 +392,22 @@ export default function POS() {
         <div className="flex gap-2 mb-3 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input className="input pl-9 py-2.5 text-sm w-full" placeholder="Search products..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input
+              ref={searchInputRef}
+              className="input pl-9 pr-9 py-2.5 text-sm w-full"
+              placeholder="Search products or scan barcode..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onKeyDown={handleSearchKeyDown}
+            />
+            {barcodeLookup.isPending && (
+              <RefreshCw size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#C9A96E] animate-spin" />
+            )}
+            {!barcodeLookup.isPending && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded" title="Scanner-ready: just scan a barcode here">
+                📷 scan-ready
+              </span>
+            )}
           </div>
           <div className="flex gap-1.5 flex-wrap">
             <button onClick={() => setCatFilter('')} className={`px-3 py-2 rounded-lg text-xs font-medium transition-all border ${!catFilter ? 'bg-[#C9A96E] text-white border-[#C9A96E]' : 'border-gray-200 text-gray-500 hover:border-[#C9A96E]'}`}>All</button>
