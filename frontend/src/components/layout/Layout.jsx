@@ -8,7 +8,7 @@ import {
   Truck, DollarSign, FileText, Settings, LogOut, ChevronLeft, ChevronRight,
   Moon, Sun, Bell, UserCircle, TrendingUp, Layers, AlertTriangle,
   ClipboardList, BookOpen, Tag, Shield, Activity, MessageSquare, Wallet,
-  Menu, Sparkles, BookMarked, X
+  Menu, Sparkles, BookMarked, X, RefreshCw
 } from 'lucide-react';
 
 const NAV = [
@@ -25,6 +25,7 @@ const NAV = [
     { to: '/dashboard/cashbook', icon: BookMarked, label: 'Cash Book', roles: ['admin','manager'], color: '#0EA5E9' },
     { to: '/dashboard/layaway', icon: Layers, label: 'Layaway', color: '#A855F7' },
     { to: '/dashboard/debts', icon: AlertTriangle, label: 'Customer Debts', roles: ['admin','manager'], color: '#F59E0B' },
+    { to: '/dashboard/refunds', icon: RefreshCw, label: 'Refunds & Returns', roles: ['admin','manager'], color: '#EF4444' },
   ]},
   { label: 'Procurement', items: [
     { to: '/dashboard/suppliers', icon: Truck, label: 'Suppliers', roles: ['admin','manager'], color: '#06B6D4' },

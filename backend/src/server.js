@@ -90,6 +90,7 @@ const {
   cashFloatRouter,
   purchaseOrdersRouter,
   uploadsRouter,
+  refundsRouter,
 } = require('./routes/allRoutes');
 
 app.use('/api/categories',      categoriesRouter);
@@ -108,6 +109,7 @@ app.use('/api/feedback',        feedbackRouter);
 app.use('/api/cash-float',      cashFloatRouter);
 app.use('/api/purchase-orders', purchaseOrdersRouter);
 app.use('/api/uploads',         uploadsRouter);
+app.use('/api/refunds',         refundsRouter);
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` }));

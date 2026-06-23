@@ -16,7 +16,7 @@ import Analytics from './pages/Analytics.jsx';
 import SecurityCenter from './pages/SecurityCenter.jsx';
 import {
   Orders, Inventory, Customers, Expenses, Staff,
-  Suppliers, Layaway, CustomerDebts,
+  Suppliers, Layaway, CustomerDebts, RefundsPage,
   Quotations, PurchaseOrders, StockCount, CashFloat,
   Discounts, Feedback, ActivityLog,
   UsersPage, SettingsPage,
@@ -183,6 +183,7 @@ export default function App() {
             <Route path="customers" element={<Customers />} />
             <Route path="layaway" element={<Layaway />} />
             <Route path="debts" element={<Guard manager><CustomerDebts /></Guard>} />
+            <Route path="refunds" element={<Guard manager><RefundsPage /></Guard>} />
             <Route path="expenses" element={<Expenses />} />
             <Route path="cashbook" element={<Guard manager><CashBook /></Guard>} />
             <Route path="quotations" element={<Guard manager><Quotations /></Guard>} />

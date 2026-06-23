@@ -97,6 +97,48 @@ export function Orders() {
     onError: (e) => toast.error(e.response?.data?.error || 'Failed to mark as paid'),
   });
 
+  // ── Refund / Return ──────────────────────────────────────────────────────
+  const [refundOrder, setRefundOrder] = useState(null); // the order currently being refunded
+  const [refundForm, setRefundForm] = useState({ selectedItems: {}, reason: '', refundMethod: 'cash', restock: true });
+
+  const openRefund = (order) => {
+    // Pre-select all items at full quantity by default — manager can deselect/reduce
+    const items = (() => { try { return JSON.parse(order.items); } catch { return []; } })();
+    const selectedItems = {};
+    items.forEach((it, idx) => { selectedItems[idx] = { ...it, refundQty: it.quantity }; });
+    setRefundForm({ selectedItems, reason: '', refundMethod: order.paymentMethod || 'cash', restock: true });
+    setRefundOrder(order);
+  };
+
+  const refundTotal = Object.values(refundForm.selectedItems || {})
+    .filter(i => i.checked !== false)
+    .reduce((s, i) => s + (i.price * (i.refundQty || 0)), 0);
+
+  const processRefundMut = useMutation({
+    mutationFn: (d) => apiLib.refunds.create(d),
+    onSuccess: () => {
+      toast.success('Refund processed successfully');
+      setRefundOrder(null);
+      qc.invalidateQueries(['orders']);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to process refund'),
+  });
+
+  const submitRefund = () => {
+    const itemsToRefund = Object.values(refundForm.selectedItems)
+      .filter(i => i.checked !== false && i.refundQty > 0)
+      .map(i => ({ productId: i.productId, name: i.name, quantity: i.refundQty, price: i.price }));
+    if (!itemsToRefund.length) { toast.error('Select at least one item to refund'); return; }
+    processRefundMut.mutate({
+      orderId: refundOrder.id,
+      items: itemsToRefund,
+      amount: refundTotal,
+      reason: refundForm.reason,
+      refundMethod: refundForm.refundMethod,
+      restock: refundForm.restock,
+    });
+  };
+
   const printReceipt = (order) => {
     const items = (() => { try { return JSON.parse(order.items); } catch { return []; } })();
     const w = window.open('', '_blank', 'width=380,height=600');
@@ -326,14 +368,75 @@ export function Orders() {
               {selected.discount > 0 && <div className="flex justify-between text-green-600 text-sm"><span>Discount</span><span>-UGX {Number(selected.discount).toLocaleString()}</span></div>}
               <div className="flex justify-between font-bold text-base border-t border-gray-100 dark:border-gray-800 pt-3"><span>Total</span><span className="text-[#A8824A]">UGX {Number(selected.total).toLocaleString()}</span></div>
 
-              <div className="flex gap-2 pt-2 pb-4">
+              <div className="flex gap-2 pt-2 pb-2">
                 <button onClick={() => printReceipt(selected)} className="btn-secondary flex-1 justify-center"><Printer size={15}/> Print</button>
                 {selected.customerPhone && <button onClick={() => whatsapp(selected)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white font-medium text-sm"><MessageCircle size={15}/> WhatsApp</button>}
               </div>
+              {!['cancelled','voided','refunded'].includes(selected.orderStatus) && (
+                <button onClick={() => openRefund(selected)} className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-red-200 dark:border-red-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 font-medium text-sm mb-4">
+                  <RefreshCw size={14}/> Process Refund / Return
+                </button>
+              )}
             </div>
           </div>
         </>
       )}
+
+      {/* ── Refund / Return Modal ── */}
+      <Modal open={!!refundOrder} onClose={() => setRefundOrder(null)} title={`Refund — ${refundOrder?.orderNumber}`} size="lg"
+        footer={<>
+          <button onClick={() => setRefundOrder(null)} className="btn-secondary">Cancel</button>
+          <button onClick={submitRefund} disabled={processRefundMut.isPending || refundTotal <= 0} className="btn-primary disabled:opacity-40">
+            {processRefundMut.isPending ? 'Processing…' : `Refund UGX ${refundTotal.toLocaleString()}`}
+          </button>
+        </>}>
+        {refundOrder && (
+          <div className="space-y-4">
+            <p className="text-xs text-gray-500">Select which items the customer is returning and adjust quantities if it's a partial return.</p>
+            <div className="space-y-2">
+              {Object.entries(refundForm.selectedItems).map(([idx, item]) => (
+                <div key={idx} className={`flex items-center gap-3 p-3 rounded-xl border ${item.checked === false ? 'border-gray-100 dark:border-gray-800 opacity-50' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <input type="checkbox" checked={item.checked !== false} className="w-4 h-4 accent-red-500"
+                    onChange={e => setRefundForm(p => ({ ...p, selectedItems: { ...p.selectedItems, [idx]: { ...item, checked: e.target.checked } } }))} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{item.name}</p>
+                    <p className="text-xs text-gray-400">UGX {item.price.toLocaleString()} each · purchased {item.quantity}</p>
+                  </div>
+                  <input type="number" min="0" max={item.quantity} value={item.refundQty}
+                    disabled={item.checked === false}
+                    onChange={e => setRefundForm(p => ({ ...p, selectedItems: { ...p.selectedItems, [idx]: { ...item, refundQty: Math.min(item.quantity, Math.max(0, parseInt(e.target.value) || 0)) } } }))}
+                    className="input w-16 text-center py-1.5 text-sm" />
+                  <span className="text-sm font-semibold text-red-600 w-24 text-right">UGX {(item.price * (item.checked === false ? 0 : item.refundQty)).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 flex justify-between items-center">
+              <span className="text-sm font-medium text-red-700 dark:text-red-400">Refund Total</span>
+              <span className="text-xl font-heading font-bold text-red-600">UGX {refundTotal.toLocaleString()}</span>
+            </div>
+
+            <div><label className="label">Reason for Return</label>
+              <input className="input" value={refundForm.reason} onChange={e => setRefundForm(p => ({ ...p, reason: e.target.value }))} placeholder="e.g. Wrong size, customer changed mind, defective item..." />
+            </div>
+
+            <div><label className="label">Refund Method</label>
+              <select className="input" value={refundForm.refundMethod} onChange={e => setRefundForm(p => ({ ...p, refundMethod: e.target.value }))}>
+                <option value="cash">Cash</option>
+                <option value="mtn_momo">MTN MoMo</option>
+                <option value="airtel_money">Airtel Money</option>
+                <option value="card">Card Reversal</option>
+                <option value="store_credit">Store Credit</option>
+              </select>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={refundForm.restock} onChange={e => setRefundForm(p => ({ ...p, restock: e.target.checked }))} className="w-4 h-4 accent-[#C9A96E]" />
+              Return items to inventory stock (uncheck if items are damaged/unsellable)
+            </label>
+          </div>
+        )}
+      </Modal>
     </Page>
   );
 }
@@ -1345,6 +1448,69 @@ export function Layaway() {
   );
 }
 
+// ─── REFUNDS & RETURNS (history view) ───────────────────────────
+export function RefundsPage() {
+  const [search, setSearch] = useState('');
+  const { data } = useQuery({ queryKey: ['refunds'], queryFn: () => apiLib.refunds.list().then(r => r.data) });
+
+  const filtered = (data || []).filter(rf =>
+    !search || rf.orderNumber?.toLowerCase().includes(search.toLowerCase()) || rf.reason?.toLowerCase().includes(search.toLowerCase())
+  );
+  const totalRefunded = (data || []).reduce((s, rf) => s + rf.amount, 0);
+  const thisMonth = (data || []).filter(rf => {
+    const d = new Date(rf.createdAt);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  });
+
+  return (
+    <Page title="Refunds & Returns" subtitle={`${data?.length || 0} total refunds processed`} icon={RefreshCw}>
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="card p-4 border-l-4 border-red-400">
+          <p className="text-xs text-gray-500 mb-1">Total Refunded (all time)</p>
+          <p className="text-2xl font-heading font-bold text-red-600">UGX {totalRefunded.toLocaleString()}</p>
+        </div>
+        <div className="card p-4 border-l-4 border-amber-400">
+          <p className="text-xs text-gray-500 mb-1">This Month</p>
+          <p className="text-2xl font-heading font-bold text-amber-600">UGX {thisMonth.reduce((s,r)=>s+r.amount,0).toLocaleString()}</p>
+        </div>
+        <div className="card p-4 border-l-4 border-gray-300">
+          <p className="text-xs text-gray-500 mb-1">Number of Returns</p>
+          <p className="text-2xl font-heading font-bold">{data?.length || 0}</p>
+        </div>
+      </div>
+
+      <div className="card overflow-x-auto">
+        <div className="p-4 border-b border-gray-100 dark:border-gray-800">
+          <div className="relative max-w-sm">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="input pl-9" placeholder="Search by order number or reason..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+        </div>
+        <table className="w-full">
+          <thead className="bg-gray-50 dark:bg-gray-800/50"><tr>{['Order #','Items','Amount','Method','Reason','Date'].map(h=><th key={h} className="table-header">{h}</th>)}</tr></thead>
+          <tbody>
+            {filtered.map(rf => {
+              const items = (() => { try { return JSON.parse(rf.items || '[]'); } catch { return []; } })();
+              return (
+                <tr key={rf.id} className="table-row">
+                  <td className="table-cell font-mono font-semibold text-[#A8824A] text-xs">{rf.orderNumber}</td>
+                  <td className="table-cell text-sm">{items.map(i => `${i.name} ×${i.quantity}`).join(', ') || '—'}</td>
+                  <td className="table-cell font-semibold text-sm text-red-600">UGX {Number(rf.amount).toLocaleString()}</td>
+                  <td className="table-cell"><span className="badge-gray text-xs capitalize">{rf.refundMethod?.replace(/_/g,' ')}</span></td>
+                  <td className="table-cell text-sm text-gray-600 dark:text-gray-300">{rf.reason || '—'}</td>
+                  <td className="table-cell text-xs text-gray-400">{rf.createdAt ? format(new Date(rf.createdAt),'MMM d, yyyy HH:mm') : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {!filtered.length && <Empty icon={RefreshCw} message="No refunds yet" sub="Refunds processed from the Orders page will appear here"/>}
+      </div>
+    </Page>
+  );
+}
+
 // ─── CUSTOMER DEBTS ────────────────────────────────────────────
 export function CustomerDebts() {
   const qc = useQueryClient();
@@ -1355,8 +1521,22 @@ export function CustomerDebts() {
   const [custSearch, setCustSearch] = useState('');
   const { data } = useQuery({ queryKey: ['debts'], queryFn: () => apiLib.debts.list().then(r => r.data) });
   const { data: custData } = useQuery({ queryKey: ['cust-s', custSearch], queryFn: () => apiLib.customers.list({ search: custSearch, limit: 5 }).then(r => r.data), enabled: custSearch.length > 1 });
-  const create = useMutation({ mutationFn: d => apiLib.debts.create(d), onSuccess: () => { toast.success('Debt recorded'); setShowAdd(false); qc.invalidateQueries(['debts']); } });
-  const pay = useMutation({ mutationFn: ({ id, amount }) => apiLib.debts.pay(id, { amount: parseFloat(amount) }), onSuccess: () => { toast.success('Payment recorded!'); setPayAmt(''); setSelected(null); qc.invalidateQueries(['debts']); } });
+  const create = useMutation({
+    mutationFn: d => apiLib.debts.create(d),
+    onSuccess: () => {
+      toast.success('Debt recorded');
+      setShowAdd(false);
+      setForm({ customerId:'', amount:'', description:'', dueDate:'' });
+      setCustSearch('');
+      qc.invalidateQueries(['debts']);
+    },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to record debt — please try again'),
+  });
+  const pay = useMutation({
+    mutationFn: ({ id, amount }) => apiLib.debts.pay(id, { amount: parseFloat(amount) }),
+    onSuccess: () => { toast.success('Payment recorded!'); setPayAmt(''); setSelected(null); qc.invalidateQueries(['debts']); },
+    onError: (e) => toast.error(e.response?.data?.error || 'Failed to record payment — please try again'),
+  });
   const totalOwed = data?.filter(d => d.status==='outstanding').reduce((s,d) => s+(d.amount-d.paidAmount), 0) || 0;
 
   return (

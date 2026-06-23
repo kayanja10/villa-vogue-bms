@@ -351,23 +351,176 @@ const layawaysRouter = makeRouter((r) => {
 // ────────────────────────────────────────
 const debtsRouter = makeRouter((r) => {
   r.get('/', authenticate, async (req, res) => {
-    const debts = await prisma.customerDebt.findMany({ include: { customer: { select: { name: true, phone: true } } }, orderBy: { createdAt: 'desc' } });
-    res.json(debts);
+    try {
+      const debts = await prisma.customerDebt.findMany({ include: { customer: { select: { name: true, phone: true } } }, orderBy: { createdAt: 'desc' } });
+      res.json(debts);
+    } catch (err) { res.status(500).json({ error: err.message }); }
   });
   r.post('/', authenticate, async (req, res) => {
-    const { customerId, amount, description, dueDate } = req.body;
-    const debt = await prisma.customerDebt.create({ data: { customerId: parseInt(customerId), amount: parseFloat(amount), description, dueDate } });
-    res.status(201).json(debt);
+    try {
+      const { customerId, amount, description, dueDate } = req.body;
+      // Validate before hitting the database — this is what was silently
+      // failing before: an unselected customer sent customerId as '' which
+      // parseInt() turns into NaN, causing an uncaught Prisma foreign-key
+      // error with no try/catch to report it back to the frontend.
+      if (!customerId || isNaN(parseInt(customerId))) {
+        return res.status(400).json({ error: 'Please select a valid customer from the search results' });
+      }
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: 'Please enter a valid debt amount' });
+      }
+      const debt = await prisma.customerDebt.create({
+        data: {
+          customerId: parseInt(customerId),
+          amount: parseFloat(amount),
+          description: description || null,
+          dueDate: dueDate || null,
+        },
+        include: { customer: { select: { name: true, phone: true } } },
+      });
+      res.status(201).json(debt);
+    } catch (err) {
+      console.error('Create debt error:', err);
+      res.status(500).json({ error: err.code === 'P2003' ? 'Selected customer does not exist' : err.message });
+    }
   });
   r.post('/:id/pay', authenticate, async (req, res) => {
-    const { amount, note } = req.body;
-    const debt = await prisma.customerDebt.findUnique({ where: { id: parseInt(req.params.id) } });
-    const payments = JSON.parse(debt.payments);
-    payments.push({ amount: parseFloat(amount), date: new Date().toISOString(), note });
-    const paidAmount = debt.paidAmount + parseFloat(amount);
-    const status = paidAmount >= debt.amount ? 'paid' : 'outstanding';
-    const updated = await prisma.customerDebt.update({ where: { id: debt.id }, data: { paidAmount, payments: JSON.stringify(payments), status } });
-    res.json(updated);
+    try {
+      const { amount, note } = req.body;
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: 'Please enter a valid payment amount' });
+      }
+      const debt = await prisma.customerDebt.findUnique({ where: { id: parseInt(req.params.id) } });
+      if (!debt) return res.status(404).json({ error: 'Debt record not found' });
+
+      // Defensive parse — payments defaults to "[]" in the schema, but guard
+      // against any legacy null values so this never crashes silently again.
+      let payments = [];
+      try { payments = JSON.parse(debt.payments || '[]'); } catch { payments = []; }
+      payments.push({ amount: parseFloat(amount), date: new Date().toISOString(), note: note || null });
+
+      const paidAmount = debt.paidAmount + parseFloat(amount);
+      const status = paidAmount >= debt.amount ? 'paid' : 'outstanding';
+      const updated = await prisma.customerDebt.update({
+        where: { id: debt.id },
+        data: { paidAmount, payments: JSON.stringify(payments), status },
+        include: { customer: { select: { name: true, phone: true } } },
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error('Pay debt error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+});
+
+
+// ────────────────────────────────────────
+// REFUNDS & RETURNS
+// ────────────────────────────────────────
+const refundsRouter = makeRouter((r) => {
+  // GET /api/refunds — list all refunds, most recent first
+  r.get('/', authenticate, async (req, res) => {
+    try {
+      const refunds = await prisma.refund.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      });
+      res.json(refunds);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // POST /api/refunds — process a refund/return against an existing order
+  r.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
+    try {
+      const { orderId, items, amount, reason, refundMethod, restock } = req.body;
+
+      if (!orderId) return res.status(400).json({ error: 'Order is required' });
+      if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+        return res.status(400).json({ error: 'Please enter a valid refund amount' });
+      }
+
+      const order = await prisma.order.findUnique({ where: { id: parseInt(orderId) } });
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+
+      const refundAmount = parseFloat(amount);
+      const existingRefunds = await prisma.refund.findMany({ where: { orderId: order.id } });
+      const alreadyRefunded = existingRefunds.reduce((s, rf) => s + rf.amount, 0);
+      if (alreadyRefunded + refundAmount > order.total) {
+        return res.status(400).json({ error: `Refund exceeds order total. Already refunded: UGX ${alreadyRefunded.toLocaleString()}, order total: UGX ${order.total.toLocaleString()}` });
+      }
+
+      const parsedItems = typeof items === 'string' ? JSON.parse(items || '[]') : (items || []);
+
+      const result = await prisma.$transaction(async (tx) => {
+        const refund = await tx.refund.create({
+          data: {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+            reason: reason || null,
+            items: JSON.stringify(parsedItems),
+            amount: refundAmount,
+            refundMethod: refundMethod || 'cash',
+            processedBy: req.user.id,
+          },
+        });
+
+        // Optionally restock the returned items back into inventory
+        if (restock && parsedItems.length) {
+          for (const item of parsedItems) {
+            if (!item.productId || !item.quantity) continue;
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { stock: { increment: item.quantity } },
+            }).catch(() => {}); // skip silently if product was deleted since the sale
+            await tx.stockMovement.create({
+              data: {
+                productId: item.productId,
+                type: 'in',
+                quantity: item.quantity,
+                reason: 'Customer return',
+                reference: order.orderNumber,
+                userId: req.user.id,
+              },
+            }).catch(() => {});
+          }
+        }
+
+        // Mark the order itself as refunded if the full amount was returned
+        const totalRefundedNow = alreadyRefunded + refundAmount;
+        if (totalRefundedNow >= order.total) {
+          await tx.order.update({ where: { id: order.id }, data: { orderStatus: 'refunded', paymentStatus: 'refunded' } });
+        }
+
+        return refund;
+      });
+
+      await prisma.activityLog.create({
+        data: {
+          userId: req.user.id, username: req.user.username,
+          action: 'process_refund', entityType: 'refund', entityId: String(result.id),
+          details: JSON.stringify({ orderNumber: order.orderNumber, amount: refundAmount, reason }),
+        },
+      }).catch(() => {});
+
+      global.io?.emit('refund:created', { refund: result, orderNumber: order.orderNumber });
+
+      res.status(201).json(result);
+    } catch (err) {
+      console.error('Process refund error:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /api/refunds/order/:orderId — refund history for a specific order
+  r.get('/order/:orderId', authenticate, async (req, res) => {
+    try {
+      const refunds = await prisma.refund.findMany({
+        where: { orderId: parseInt(req.params.orderId) },
+        orderBy: { createdAt: 'desc' },
+      });
+      res.json(refunds);
+    } catch (err) { res.status(500).json({ error: err.message }); }
   });
 });
 
@@ -569,5 +722,5 @@ module.exports = {
   categoriesRouter, expensesRouter, suppliersRouter, settingsRouter,
   activityRouter, inventoryRouter, reportsRouter, discountsRouter,
   quotesRouter, staffRouter, layawaysRouter, debtsRouter, feedbackRouter,
-  cashFloatRouter, purchaseOrdersRouter, uploadsRouter,
+  cashFloatRouter, purchaseOrdersRouter, uploadsRouter, refundsRouter,
 };

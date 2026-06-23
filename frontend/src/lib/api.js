@@ -168,6 +168,12 @@ export const debts = {
   pay:    (id,d) => api.post(`/debts/${id}/pay`, d),
 };
 
+export const refunds = {
+  list:        ()        => api.get('/refunds'),
+  create:      (d)       => api.post('/refunds', d),
+  byOrder:     (orderId) => api.get(`/refunds/order/${orderId}`),
+};
+
 export const quotes = {
   list:         ()     => api.get('/quotes'),
   get:          (id)   => api.get(`/quotes/${id}`),
