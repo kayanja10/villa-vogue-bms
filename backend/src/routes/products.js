@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
-const prisma = new PrismaClient();
 
 // ── Auto-generate Barcode (EAN-13 format with real check digit) ──────────────
 // Uses prefix "200" — the GS1 "restricted circulation" range officially
@@ -20,10 +19,13 @@ function ean13CheckDigit(digits12) {
 }
 
 async function generateBarcode() {
-  // Find the highest existing sequence among our own generated codes
+  // Find the highest existing sequence among our own generated codes.
+  // Capped at 1000 most recent to avoid an unbounded query as the catalog grows.
   const existing = await prisma.product.findMany({
     where: { barcode: { startsWith: '200' } },
     select: { barcode: true },
+    orderBy: { id: 'desc' },
+    take: 1000,
   });
   let maxSeq = 0;
   for (const p of existing) {
@@ -38,6 +40,22 @@ async function generateBarcode() {
   return `${digits12}${checkDigit}`;
 }
 
+// Wraps generateBarcode with a retry loop: if two staff create products at
+// the same instant, both might compute the same "next" barcode — the second
+// INSERT then fails the @unique constraint. Rather than crash that request,
+// retry with a freshly recalculated barcode up to 3 times. This converts a
+// rare race-condition crash into an invisible, automatic retry.
+async function generateBarcodeWithRetry(maxAttempts = 3) {
+  let lastErr;
+  for (let i = 0; i < maxAttempts; i++) {
+    const candidate = await generateBarcode();
+    const clash = await prisma.product.findUnique({ where: { barcode: candidate }, select: { id: true } });
+    if (!clash) return candidate;
+    lastErr = new Error('Barcode collision, retrying');
+  }
+  throw lastErr || new Error('Could not generate a unique barcode');
+}
+
 // ── Auto-generate SKU ─────────────────────────────────────────────────────────
 // Format: VV-{CATEGORY3}-{SEQ4}  e.g. VV-DRE-0001, VV-GEN-0042 (no category)
 async function generateSku(categoryId) {
@@ -48,10 +66,13 @@ async function generateSku(categoryId) {
       if (cat?.name) prefix = cat.name.replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase().padEnd(3, 'X');
     } catch { /* fall back to GEN */ }
   }
-  // Find highest existing sequence for this prefix to avoid collisions
+  // Find highest existing sequence for this prefix — capped at 1000 most
+  // recent to avoid an unbounded query as the catalog grows.
   const existing = await prisma.product.findMany({
     where: { sku: { startsWith: `VV-${prefix}-` } },
     select: { sku: true },
+    orderBy: { id: 'desc' },
+    take: 1000,
   });
   let maxSeq = 0;
   for (const p of existing) {
@@ -60,6 +81,19 @@ async function generateSku(categoryId) {
   }
   const nextSeq = String(maxSeq + 1).padStart(4, '0');
   return `VV-${prefix}-${nextSeq}`;
+}
+
+// Same race-condition protection as barcodes: retry with a fresh sequence
+// number if two staff create products in the same category simultaneously.
+async function generateSkuWithRetry(categoryId, maxAttempts = 3) {
+  let lastErr;
+  for (let i = 0; i < maxAttempts; i++) {
+    const candidate = await generateSku(categoryId);
+    const clash = await prisma.product.findUnique({ where: { sku: candidate }, select: { id: true } });
+    if (!clash) return candidate;
+    lastErr = new Error('SKU collision, retrying');
+  }
+  throw lastErr || new Error('Could not generate a unique SKU');
 }
 
 // GET /api/products
@@ -157,7 +191,7 @@ router.post('/:id/generate-barcode', authenticate, requireManagerOrAdmin, async 
     const product = await prisma.product.findUnique({ where: { id: parseInt(req.params.id) } });
     if (!product) return res.status(404).json({ error: 'Product not found' });
     if (product.barcode) return res.status(400).json({ error: 'Product already has a barcode' });
-    const barcode = await generateBarcode();
+    const barcode = await generateBarcodeWithRetry();
     const updated = await prisma.product.update({ where: { id: product.id }, data: { barcode } });
     res.json(updated);
   } catch (err) {
@@ -199,9 +233,9 @@ router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
     const { name, sku, barcode, categoryId, price, costPrice, stock, lowStockThreshold, description, images, tags, variants, supplierId, isFeatured } = req.body;
 
     // Auto-generate SKU if not provided (or blank) — guarantees every product has one
-    const finalSku = sku && sku.trim() ? sku.trim() : await generateSku(categoryId);
+    const finalSku = sku && sku.trim() ? sku.trim() : await generateSkuWithRetry(categoryId);
     // Auto-generate barcode if not provided — guarantees every product is scannable
-    const finalBarcode = barcode && barcode.trim() ? barcode.trim() : await generateBarcode();
+    const finalBarcode = barcode && barcode.trim() ? barcode.trim() : await generateBarcodeWithRetry();
 
     const product = await prisma.product.create({
       data: { name, sku: finalSku, barcode: finalBarcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },

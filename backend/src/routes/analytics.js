@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma');
 const { authenticate, requireManagerOrAdmin } = require('../middleware/auth');
-const prisma = new PrismaClient();
 
 // ─── DASHBOARD ────────────────────────────────────────────────
 router.get('/dashboard', authenticate, async (req, res) => {

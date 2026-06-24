@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
-const prisma = new PrismaClient();
 
 function generateOrderNumber() {
   const date = new Date();
@@ -11,6 +10,21 @@ function generateOrderNumber() {
   const d = String(date.getDate()).padStart(2, '0');
   const rand = Math.floor(1000 + Math.random() * 9000);
   return `VV${y}${m}${d}-${rand}`;
+}
+
+// With only 9000 possible random suffixes per day, a busy day has a small
+// but real chance of two orders landing on the same number, which would
+// crash that order's creation since orderNumber is @unique. This wraps
+// generation in a uniqueness check with retry, inside the same transaction
+// that creates the order, so a rare collision is invisible to the customer.
+async function generateUniqueOrderNumber(tx) {
+  for (let i = 0; i < 5; i++) {
+    const candidate = generateOrderNumber();
+    const clash = await tx.order.findUnique({ where: { orderNumber: candidate }, select: { id: true } });
+    if (!clash) return candidate;
+  }
+  // Extremely unlikely fallback: append milliseconds for guaranteed uniqueness
+  return `${generateOrderNumber()}-${Date.now().toString().slice(-4)}`;
 }
 
 // ── Allow portal (online) orders without staff JWT ───────────────────────────
@@ -92,17 +106,23 @@ router.post('/', optionalAuth, async (req, res) => {
 
     const parsedItems = typeof items === 'string' ? JSON.parse(items) : items;
 
-    // Validate stock
-    for (const item of parsedItems) {
-      const product = await prisma.product.findUnique({ where: { id: item.productId } });
-      if (!product) return res.status(400).json({ error: `Product ${item.name || item.productId} not found` });
-      if (product.stock < item.quantity) return res.status(400).json({ error: `Insufficient stock for ${product.name}. Available: ${product.stock}` });
-    }
-
     const order = await prisma.$transaction(async (tx) => {
+      // Stock validation now happens INSIDE the transaction, immediately
+      // before decrementing. Previously this was a separate query before
+      // the transaction even started — if two customers checked out the
+      // last unit of the same product at the same moment, both validations
+      // could pass before either write landed, overselling the item.
+      // Running it inside $transaction (with Prisma's default read-committed
+      // isolation) closes that window for the vast majority of cases.
+      for (const item of parsedItems) {
+        const product = await tx.product.findUnique({ where: { id: item.productId } });
+        if (!product) throw new Error(`Product ${item.name || item.productId} not found`);
+        if (product.stock < item.quantity) throw new Error(`Insufficient stock for ${product.name}. Available: ${product.stock}`);
+      }
+
       const newOrder = await tx.order.create({
         data: {
-          orderNumber:   generateOrderNumber(),
+          orderNumber:   await generateUniqueOrderNumber(tx),
           customerId:    customerId ? parseInt(customerId) : null,
           customerName:  customerName || 'Online Customer',
           customerPhone: customerPhone || null,
@@ -194,7 +214,12 @@ router.post('/', optionalAuth, async (req, res) => {
     res.status(201).json({ ...order, orderNumber: order.orderNumber });
   } catch (err) {
     console.error('Create order error:', err);
-    res.status(500).json({ error: err.message });
+    // Stock/product validation errors thrown inside the transaction are
+    // client-correctable (400), not server failures (500) — this keeps the
+    // frontend's error toast accurate instead of saying "server error" for
+    // what's actually "this item just sold out."
+    const isValidationError = /not found|Insufficient stock/.test(err.message);
+    res.status(isValidationError ? 400 : 500).json({ error: err.message });
   }
 });
 

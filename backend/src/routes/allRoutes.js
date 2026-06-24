@@ -1,8 +1,7 @@
 // ============ CATEGORIES ROUTE ============
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
-const prisma = new PrismaClient();
 
 function makeRouter(handlers) {
   const r = express.Router();
