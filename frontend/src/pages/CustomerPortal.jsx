@@ -1,7 +1,7 @@
 // VILLA VOGUE CUSTOMER PORTAL — LUXURY EDITION v2.0
 // Dark/Light Mode | Staff Login | All Features Preserved
 
-import React, { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 
 // Native IntersectionObserver — works with ANY framer-motion version
@@ -88,6 +88,20 @@ const useToast = () => useContext(ToastCtx);
       .ll{font-family:var(--fb);font-size:11px;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
       .vp{height:3px;background:var(--br);border-radius:10px;overflow:hidden}.vp-f{height:100%;background:linear-gradient(90deg,var(--gold-d),var(--gold-l));border-radius:10px;transition:width .5s ease}
       .mmo{position:fixed;inset:0;z-index:1900;background:var(--bgs);backdrop-filter:blur(32px);overflow-y:auto}
+      /* ── New-arrival / discount / best-seller / exit-banner additions ── */
+      @keyframes na-pulse{0%{box-shadow:0 0 0 0 rgba(201,168,76,.55)}70%{box-shadow:0 0 0 7px rgba(201,168,76,0)}100%{box-shadow:0 0 0 0 rgba(201,168,76,0)}}
+      .na-badge{background:linear-gradient(135deg,var(--gold-d),var(--gold-l));color:#000;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px 4px 8px;border-radius:50px;display:inline-flex;align-items:center;gap:4px;animation:na-pulse 2.2s infinite}
+      .pct-badge{background:linear-gradient(135deg,#E63946,#FF6B6B);color:#fff;font-size:10px;font-weight:800;letter-spacing:.05em;padding:3px 9px;border-radius:50px;white-space:nowrap}
+      .bs-rank{position:absolute;top:12px;left:12px;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.55);color:var(--gold-l);font-family:var(--fd);font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center;z-index:2}
+      .similar-scroll{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;scroll-snap-type:x proximity}
+      .similar-scroll::-webkit-scrollbar{height:5px}
+      .share-menu{position:absolute;top:calc(100% + 8px);right:0;background:var(--bgs);backdrop-filter:blur(28px);border:1px solid var(--br);border-radius:16px;box-shadow:var(--sl);padding:10px;display:flex;flex-direction:column;gap:4px;z-index:50;min-width:180px}
+      .share-menu a,.share-menu button{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;border:none;background:none;color:var(--tp);font-family:var(--fb);font-size:13px;text-decoration:none;cursor:pointer;transition:background .15s}
+      .share-menu a:hover,.share-menu button:hover{background:var(--ib)}
+      .exit-banner-overlay{position:fixed;inset:0;background:var(--ov);backdrop-filter:blur(6px);z-index:2500;display:flex;align-items:center;justify-content:center;padding:20px}
+      .exit-banner{background:var(--bgs);backdrop-filter:blur(32px);border:1px solid var(--brg);border-radius:var(--rxl);max-width:420px;width:100%;padding:36px 30px 28px;text-align:center;box-shadow:var(--sl);position:relative}
+      .lucky-code{border:1.5px dashed var(--gold);border-radius:12px;padding:12px 18px;font-family:var(--fd);font-size:22px;letter-spacing:.1em;color:var(--gold);font-weight:600;display:inline-block;margin:14px 0}
+      @media(max-width:480px){.exit-banner{padding:28px 20px 22px}}
       @media(max-width:900px){.dn{display:none!important}}
       @media(max-width:768px){.mm{min-width:calc(100vw - 32px)}.vd{width:100vw}.vm>div{grid-template-columns:1fr!important}}
     `;
@@ -129,6 +143,12 @@ const IC = ({ n, sz=20, c="currentColor" }) => {
     wa:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>,
     facebook:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M22 12.06C22 6.51 17.52 2 12 2S2 6.51 2 12.06c0 5.02 3.66 9.18 8.44 9.94v-7.03H7.9v-2.91h2.54V9.84c0-2.5 1.49-3.89 3.78-3.89 1.09 0 2.24.2 2.24.2v2.47h-1.26c-1.24 0-1.63.77-1.63 1.56v1.87h2.78l-.45 2.91h-2.33V22c4.78-.76 8.44-4.92 8.44-9.94z"/></svg>,
     tiktok:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M16.6 5.82s.51.5 0 0A4.278 4.278 0 0115.54 3h-3.09v12.4a2.59 2.59 0 01-2.59 2.5c-1.42 0-2.6-1.16-2.6-2.6 0-1.72 1.66-3.01 3.37-2.48V9.66c-3.45-.46-6.47 2.22-6.47 5.64 0 3.33 2.76 5.7 5.69 5.7 3.14 0 5.69-2.55 5.69-5.7V9.01a7.35 7.35 0 004.49 1.5V7.4s-1.88.09-3.43-1.58z"/></svg>,
+    // ── New icons added for Share / Best Sellers / Exit Banner features ──
+    twitterx:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
+    mail:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2" viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z"/><polyline points="22 6 12 13 2 6"/></svg>,
+    share:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+    flame:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M12 2c1 3-3 4-3 8a3 3 0 006 0c0-1-.4-1.8-1-2.5 1.8.6 4 2.6 4 6.5a6 6 0 11-12 0c0-5 3-8 6-12z"/></svg>,
+    sparkle:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M12 1l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>,
   };
   return <span style={{display:"inline-flex",alignItems:"center"}}>{ic[n]||null}</span>;
 };
@@ -414,6 +434,7 @@ const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlis
   const secondaryImg = getSecondaryImage(p);
   const allImgs = parseImages(p.images);
   const imgCount = allImgs.length || (p.image_url ? 1 : 0);
+  const discount = getDiscountInfo(p);
   const wl=e=>{e.stopPropagation();setHa(true);setTimeout(()=>setHa(false),400);onWishlistToggle(p);toast(wishlisted?"Removed from wishlist":"Added to wishlist","i","♥");};
   const ac=e=>{e.stopPropagation();onAddToCart(p);toast(`${p.name} added to cart`,"ok","✦");};
   return (
@@ -435,8 +456,9 @@ const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlis
         <div className="co"/>
         {/* Badges */}
         <div style={{position:"absolute",top:12,left:12,display:"flex",flexDirection:"column",gap:5}}>
-          {p.is_new&&<span className="lb">New</span>}
+          {isNewArrival(p)&&<span className="na-badge"><IC n="sparkle" sz={9} c="#000"/> New Arrival</span>}
           {p.is_sale&&<span className="sb">Sale</span>}
+          {discount&&<span className="pct-badge">-{discount.percent}%</span>}
           {p.stock_quantity>0&&p.stock_quantity<5&&<span style={{background:"rgba(255,100,50,.9)",color:"#fff",fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:50}}>Only {p.stock_quantity} left</span>}
         </div>
         {/* Image count badge */}
@@ -473,7 +495,8 @@ const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlis
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
             <span style={{fontSize:17,fontWeight:700,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span>
-            {p.original_price&&<span style={{fontSize:12,color:"var(--tm)",textDecoration:"line-through",marginLeft:7}}>UGX {Number(p.original_price).toLocaleString()}</span>}
+            {discount&&<span style={{fontSize:12,color:"var(--tm)",textDecoration:"line-through",marginLeft:7}}>UGX {discount.original.toLocaleString()}</span>}
+            {discount&&<div style={{fontSize:11,color:"#2d9d5f",fontWeight:600,marginTop:2}}>Save {discount.percent}%</div>}
           </div>
           {p.stock_quantity===0&&<span style={{fontSize:11,color:"var(--tm)",fontStyle:"italic"}}>Out of Stock</span>}
         </div>
@@ -482,7 +505,7 @@ const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlis
   );
 };
 
-const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
+const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline,products=[],wishlist=[],onWishlistToggle,onSelectProduct}) => {
   const toast=useToast();
   const [qty,setQty]=useState(1);
   const [size,setSize]=useState("");
@@ -499,6 +522,12 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
     setImgIdx(0); setQty(1); setSize(""); setColor(""); setZoomed(false);
   }, [p?.id]);
 
+  // Similar Products: recomputed only when the open product or catalog
+  // changes (not on every keystroke/render) so it never costs extra
+  // performance while browsing. Also runs before the early return to keep
+  // the hook order stable.
+  const similar = useMemo(() => p ? getSimilarProducts(products.map(normalizeProduct), p, 8) : [], [p?.id, products]);
+
   if(!p)return null;
 
   // Parse all images from the product
@@ -510,6 +539,7 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
   })();
 
   const currentImg = allImages[imgIdx];
+  const discount = getDiscountInfo(p);
   const prevImg = () => setImgIdx(i => (i - 1 + allImages.length) % allImages.length);
   const nextImg = () => setImgIdx(i => (i + 1) % allImages.length);
 
@@ -580,7 +610,8 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
                   )}
 
                   {/* Badges */}
-                  {p.is_new&&<span className="lb" style={{position:"absolute",top:allImages.length>1?44:12,left:12}}>New Arrival</span>}
+                  {isNewArrival(p)&&<span className="na-badge" style={{position:"absolute",top:allImages.length>1?44:12,left:12}}><IC n="sparkle" sz={9} c="#000"/> New Arrival</span>}
+                  {discount&&<span className="pct-badge" style={{position:"absolute",top:allImages.length>1?44:12,left:isNewArrival(p)?120:12}}>-{discount.percent}%</span>}
                 </div>
 
                 {/* Thumbnail strip */}
@@ -605,7 +636,11 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
                 <p className="ll" style={{marginBottom:5}}>{p.category}</p>
                 <h2 style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:400,lineHeight:1.2,marginBottom:8,paddingRight:28}}>{p.name}</h2>
                 <Stars r={p.rating||4.2} count={p.review_count||0} sz={14}/>
-                <div style={{margin:"10px 0"}}><span style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:500,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span></div>
+                <div style={{margin:"10px 0",display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
+                  <span style={{fontFamily:"var(--fd)",fontSize:24,fontWeight:500,color:"var(--gold)"}}>UGX {Number(p.price).toLocaleString()}</span>
+                  {discount&&<span style={{fontSize:14,color:"var(--tm)",textDecoration:"line-through"}}>UGX {discount.original.toLocaleString()}</span>}
+                  {discount&&<span className="pct-badge">Save {discount.percent}%</span>}
+                </div>
                 <p style={{fontSize:12,color:"var(--ts)",lineHeight:1.7,marginBottom:12}}>{p.description||"Premium quality fashion piece crafted with meticulous attention to detail. A timeless addition to your wardrobe."}</p>
 
                 {/* Image labels legend — shows what views are available */}
@@ -662,11 +697,36 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline}) => {
                     <IC n="wa" sz={14} c="#fff"/> Order via WhatsApp
                   </motion.button>
                 </a>
-                <p style={{fontSize:10,color:"var(--tm)",textAlign:"center",marginTop:10}}>
+                <p style={{fontSize:10,color:"var(--tm)",textAlign:"center",marginTop:10,marginBottom:10}}>
                   🔒 Online orders go directly to our system · WhatsApp for instant chat
                 </p>
+
+                {/* Share Product with a Friend */}
+                <ShareProductButton product={p}/>
               </div>
             </div>
+
+            {/* ── Similar Products — shown beneath the product details ── */}
+            {similar.length>0&&(
+              <div style={{padding:"4px 20px 24px"}}>
+                <p className="ll" style={{marginBottom:12}}>You May Also Like</p>
+                <div className="similar-scroll">
+                  {similar.map(sp=>(
+                    <div key={sp.id} onClick={()=>onSelectProduct?.(sp)}
+                      style={{flex:"0 0 130px",scrollSnapAlign:"start",cursor:"pointer"}}>
+                      <div style={{position:"relative",height:130,borderRadius:14,overflow:"hidden",background:"var(--bt)",marginBottom:6}}>
+                        {getPrimaryImage(sp)
+                          ? <img src={getPrimaryImage(sp)} alt={sp.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          : <div style={{height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontFamily:"var(--fd)",fontSize:18,opacity:.2}}>VV</span></div>}
+                        {isNewArrival(sp)&&<span className="na-badge" style={{position:"absolute",top:6,left:6,fontSize:8,padding:"2px 7px"}}>New</span>}
+                      </div>
+                      <p style={{fontSize:11,fontWeight:500,color:"var(--tp)",lineHeight:1.3,marginBottom:3,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{sp.name}</p>
+                      <p style={{fontSize:11,fontWeight:700,color:"var(--gold)"}}>UGX {Number(sp.price).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}
@@ -1363,6 +1423,173 @@ const normalizeProduct = (p) => {
   };
 };
 
+// ── New Arrival badge: configurable window (days) ───────────────────────────
+// Looks for any common "date added" field the backend might send. If none is
+// present we fall back to the explicit `is_new` flag already used elsewhere
+// in this file, so existing backend payloads keep working unchanged.
+const NEW_ARRIVAL_DAYS = 30; // ← change this single number to retune the window
+const isNewArrival = (p, days = NEW_ARRIVAL_DAYS) => {
+  const raw = p.created_at || p.createdAt || p.date_added || p.dateAdded;
+  if (raw) {
+    const added = new Date(raw).getTime();
+    if (!isNaN(added)) return (Date.now() - added) <= days * 24 * 60 * 60 * 1000;
+  }
+  return !!p.is_new; // backward-compatible fallback
+};
+
+// ── Discount pricing helper ──────────────────────────────────────────────────
+// Returns null when there's nothing to discount (so callers can render the
+// regular price-only layout), otherwise the strikethrough original, the sale
+// price and the rounded percentage saved.
+const getDiscountInfo = (p) => {
+  const sale = Number(p.price) || 0;
+  const original = Number(p.original_price) || 0;
+  if (!original || original <= sale) return null;
+  const percent = Math.round((1 - sale / original) * 100);
+  if (percent <= 0) return null;
+  return { original, sale, percent };
+};
+
+// ── Best Sellers scoring ─────────────────────────────────────────────────────
+// Checks the common field names a backend might use for "units sold". As soon
+// as the API starts sending any of these, Best Sellers will reorder itself —
+// no code change needed. Until then we fall back to a rating×reviews proxy so
+// the section still has a sensible order to show.
+const getSalesScore = (p) => {
+  const explicit = p.sales_count ?? p.salesCount ?? p.total_sold ?? p.totalSold ??
+    p.units_sold ?? p.unitsSold ?? p.orders_count ?? p.ordersCount ?? p.sold;
+  if (explicit !== undefined && explicit !== null) return Number(explicit) || 0;
+  return (Number(p.review_count) || 0) * (Number(p.rating) || 1);
+};
+
+// ── Similar Products matcher ─────────────────────────────────────────────────
+// Scores every other in-stock product against the current one by category,
+// brand and shared tags, then returns the top `limit` matches (4-8). Designed
+// to be called once per opened product (wrapped in useMemo by the caller) so
+// it never re-runs on every render and stays cheap even for large catalogs.
+const getSimilarProducts = (allProducts = [], current, limit = 8) => {
+  if (!current) return [];
+  const currentTags = Array.isArray(current.tags) ? current.tags : [];
+  const scored = allProducts
+    .filter(p => p.id !== current.id)
+    .map(p => {
+      let score = 0;
+      if (p.category && p.category === current.category) score += 3;
+      if (p.brand && p.brand === current.brand) score += 2;
+      if (currentTags.length && Array.isArray(p.tags)) {
+        score += p.tags.filter(t => currentTags.includes(t)).length;
+      }
+      return { p, score };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score || (b.p.rating || 0) - (a.p.rating || 0));
+
+  let result = scored.slice(0, limit).map(x => x.p);
+  // Pad up to the 4-item minimum with other products so the section always
+  // has something useful to show, even for a brand-new catalog with no
+  // matching category/brand/tag data yet.
+  if (result.length < Math.min(4, allProducts.length - 1)) {
+    const used = new Set(result.map(p => p.id).concat([current.id]));
+    for (const p of allProducts) {
+      if (result.length >= Math.min(limit, 8)) break;
+      if (!used.has(p.id)) { result.push(p); used.add(p.id); }
+    }
+  }
+  return result.slice(0, Math.max(4, Math.min(limit, 8)));
+};
+
+// ── Product sharing helpers ──────────────────────────────────────────────────
+const getProductUrl = (p) => {
+  try { return `${window.location.origin}/store/product/${p.id}`; }
+  catch { return `/store/product/${p.id}`; }
+};
+const getShareText = (p) => `${p.name} — UGX ${Number(p.price).toLocaleString()} | Villa Vogue`;
+
+// "Share Product with a Friend" — uses the native device share sheet where
+// supported (and attaches the product image as a file when the browser
+// allows it), otherwise falls back to a small menu of WhatsApp / Facebook /
+// X / Email links. Each link already carries the product name, price and
+// link; social platforms that render link-preview images (WhatsApp, FB, X)
+// pull the image from the product page's own Open Graph tags.
+const ShareProductButton = ({ product: p, compact = false }) => {
+  const toast = useToast();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setMenuOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [menuOpen]);
+
+  if (!p) return null;
+  const url = getProductUrl(p);
+  const text = getShareText(p);
+
+  const handleNativeShare = async () => {
+    // Try to attach the actual product image as a shareable file (supported
+    // on most mobile browsers); silently fall back to text+url share, and
+    // finally to the link-menu, if anything along the way isn't supported.
+    try {
+      const shareData = { title: p.name, text, url };
+      if (navigator.canShare && getPrimaryImage(p)) {
+        try {
+          const res = await fetch(getPrimaryImage(p));
+          const blob = await res.blob();
+          const file = new File([blob], "product.jpg", { type: blob.type || "image/jpeg" });
+          if (navigator.canShare({ files: [file] })) shareData.files = [file];
+        } catch { /* image fetch/CORS failed — share without the file */ }
+      }
+      if (navigator.share) { await navigator.share(shareData); return; }
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user cancelled — do nothing
+    }
+    setMenuOpen(true); // no native share support → show link menu
+  };
+
+  const links = [
+    { key: "wa", label: "WhatsApp", icon: "wa", color: "#25D366", href: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}` },
+    { key: "fb", label: "Facebook", icon: "facebook", color: "#1877F2", href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(text)}` },
+    { key: "x", label: "X (Twitter)", icon: "twitterx", color: "var(--tp)", href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}` },
+    { key: "mail", label: "Email", icon: "mail", color: "var(--tp)", href: `mailto:?subject=${encodeURIComponent(`Check out ${p.name} on Villa Vogue`)}&body=${encodeURIComponent(`${text}\n\n${url}`)}` },
+  ];
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", display: "inline-block" }}>
+      <motion.button
+        whileTap={{ scale: .96 }}
+        onClick={() => (typeof navigator !== "undefined" && navigator.share ? handleNativeShare() : setMenuOpen(o => !o))}
+        className={compact ? "" : "bgh"}
+        title="Share Product with a Friend"
+        style={compact
+          ? { width: 34, height: 34, borderRadius: "50%", background: "var(--bg)", backdropFilter: "blur(10px)", border: "1px solid var(--br)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }
+          : { padding: "11px", fontSize: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer" }}>
+        <IC n="share" sz={compact ? 14 : 13} c={compact ? "var(--ts)" : "currentColor"} />
+        {!compact && "Share Product with a Friend"}
+      </motion.button>
+      <AnimatePresence>
+        {menuOpen && (
+          <motion.div className="share-menu" initial={{ opacity: 0, y: -6, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: .96 }}>
+            {links.map(l => (
+              <a key={l.key} href={l.href} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>
+                <IC n={l.icon} sz={15} c={l.color} /> {l.label}
+              </a>
+            ))}
+            <button onClick={() => {
+              navigator.clipboard?.writeText(url);
+              toast("Product link copied!", "ok", "🔗");
+              setMenuOpen(false);
+            }}>
+              <IC n="check" sz={14} c="var(--gold)" /> Copy Link
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const PRODUCTS_PER_PAGE = 8;
 
 const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading}) => {
@@ -1480,6 +1707,53 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
             <button className="bgh" onClick={()=>setVisible(PRODUCTS_PER_PAGE)} style={{marginTop:8,padding:"7px 20px",fontSize:12}}>Show Less ↑</button>
           </div>
         )}
+      </div>
+    </section>
+  );
+};
+
+// ── Best Sellers ─────────────────────────────────────────────────────────────
+// Ranks products by getSalesScore() (real sales figures if the backend sends
+// them, otherwise a rating×reviews proxy — see comment on getSalesScore).
+// Re-sorting happens from the live `products` prop, so whenever sales data on
+// a product changes the section reorders itself on the next render with no
+// extra wiring needed.
+const BEST_SELLERS_COUNT = 8;
+const BestSellersSection = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading}) => {
+  const ranked = (products || [])
+    .map(normalizeProduct)
+    .filter(p => p.stock_quantity > 0)
+    .sort((a, b) => getSalesScore(b) - getSalesScore(a))
+    .slice(0, BEST_SELLERS_COUNT);
+
+  if (!loading && ranked.length === 0) return null; // nothing to show yet — don't render an empty section
+
+  return (
+    <section style={{padding:"60px 0",background:"var(--bp)"}}>
+      <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
+        <Reveal>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:32}}>
+            <IC n="flame" sz={22} c="#FF6B35"/>
+            <div>
+              <span className="ll">Customer Favorites</span>
+              <h2 className="sl" style={{fontSize:"clamp(24px,3.5vw,40px)",marginTop:4}}>Best Sellers</h2>
+            </div>
+          </div>
+        </Reveal>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(246px,1fr))",gap:22}}>
+          {loading
+            ? Array(4).fill(null).map((_,i)=><SkCard key={i}/>)
+            : ranked.map((p,i)=>(
+                <Reveal key={p.id} delay={i*.04}>
+                  <div style={{position:"relative"}}>
+                    <span className="bs-rank">#{i+1}</span>
+                    <ProductCard product={p} onAddToCart={onAddToCart} onQuickView={onQuickView}
+                      onWishlistToggle={onWishlistToggle} wishlisted={wishlist.some(w=>w.id===p.id)}/>
+                  </div>
+                </Reveal>
+              ))
+          }
+        </div>
       </div>
     </section>
   );
@@ -1693,7 +1967,7 @@ const Footer = () => (
       </div>
       <div className="gd" style={{marginBottom:26}}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:14}}>
-        <p style={{fontSize:12,color:"var(--tm)"}}>© 2025 Villa Vogue Fashions. All rights reserved.</p>
+        <p style={{fontSize:12,color:"var(--tm)"}}>© {new Date().getFullYear()} Villa Vogue Fashions. All rights reserved.</p>
         <div style={{display:"flex",gap:18}}>
           {["Privacy","Terms","Cookies"].map(lk=>(
             <a key={lk} href="#" style={{fontSize:12,color:"var(--tm)",textDecoration:"none"}}
@@ -2201,6 +2475,112 @@ const WhatsAppFloat = () => (
   </motion.a>
 );
 
+// ── "Lucky Discount" exit-intent banner ──────────────────────────────────────
+// Shows at most ONCE per browser session (sessionStorage-gated) so it never
+// becomes annoying, and is fully suppressed whenever `suppress` is true —
+// the caller passes true while the cart, checkout, login or search modals
+// are open so this can never block or interrupt those flows.
+const EXIT_DISCOUNT_CODE = "LUCKY10";
+const ExitIntentBanner = ({ suppress, onShopNow }) => {
+  const [visible, setVisible] = useState(false);
+  const toast = useToast();
+  const suppressRef = useRef(suppress);
+  const armedRef = useRef(false); // becomes true after the initial grace period
+  useEffect(() => { suppressRef.current = suppress; }, [suppress]);
+
+  // If a modal opens while the banner happens to be showing, hide it instantly
+  // so it can never sit on top of / interfere with checkout or navigation.
+  useEffect(() => { if (suppress) setVisible(false); }, [suppress]);
+
+  useEffect(() => {
+    let alreadyHandled = false;
+    try {
+      alreadyHandled = sessionStorage.getItem("vv_exit_shown") === "1" ||
+        sessionStorage.getItem("vv_exit_optout") === "1";
+    } catch { /* sessionStorage unavailable — just skip the banner this load */ }
+    if (alreadyHandled) return;
+
+    const trigger = () => {
+      if (armedRef.current === false) return; // still within the grace period
+      if (suppressRef.current) return;          // a modal is open — never interrupt
+      let handled = false;
+      try {
+        handled = sessionStorage.getItem("vv_exit_shown") === "1" ||
+          sessionStorage.getItem("vv_exit_optout") === "1";
+      } catch {}
+      if (handled) return;
+      setVisible(true);
+      try { sessionStorage.setItem("vv_exit_shown", "1"); } catch {}
+    };
+
+    // Wait a few seconds before arming — avoids firing the instant a page loads.
+    const armTimer = setTimeout(() => { armedRef.current = true; }, 4000);
+
+    // Desktop: classic exit-intent — mouse leaves through the top of the viewport.
+    const onMouseLeave = (e) => { if (e.clientY <= 0) trigger(); };
+    document.addEventListener("mouseleave", onMouseLeave);
+
+    // Mobile/touch: there's no mouse to leave from, so use a rapid upward
+    // scroll-after-scrolling-down gesture as a "heading for the address bar /
+    // back button" proxy — a common mobile exit-intent substitute.
+    let lastY = window.scrollY, lastT = Date.now();
+    const onScroll = () => {
+      const y = window.scrollY, t = Date.now();
+      const dt = Math.max(1, t - lastT);
+      const velocity = (lastY - y) / dt; // px/ms, positive = scrolling up
+      if (y > 500 && velocity > 1.2) trigger();
+      lastY = y; lastT = t;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      clearTimeout(armTimer);
+      document.removeEventListener("mouseleave", onMouseLeave);
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
+
+  const claim = () => {
+    navigator.clipboard?.writeText(EXIT_DISCOUNT_CODE);
+    toast(`Code ${EXIT_DISCOUNT_CODE} copied — happy shopping!`, "ok", "🎁");
+    setVisible(false);
+    onShopNow?.();
+  };
+
+  const dismissForSession = () => {
+    try { sessionStorage.setItem("vv_exit_optout", "1"); } catch {}
+    setVisible(false);
+  };
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div className="exit-banner-overlay" onClick={e=>e.target===e.currentTarget&&setVisible(false)}
+          initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
+          <motion.div className="exit-banner" initial={{opacity:0,scale:.92,y:16}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.94,y:10}}>
+            <button onClick={()=>setVisible(false)} aria-label="Close"
+              style={{position:"absolute",top:14,right:14,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}>
+              <IC n="x" sz={15}/>
+            </button>
+            <IC n="gift" sz={32} c="var(--gold)"/>
+            <h2 className="sl" style={{fontSize:"clamp(22px,3vw,28px)",margin:"14px 0 6px"}}>Lucky Discount!</h2>
+            <p style={{fontSize:14,color:"var(--ts)",lineHeight:1.7}}>Don't leave without claiming your discount!</p>
+            <div className="lucky-code">{EXIT_DISCOUNT_CODE}</div>
+            <motion.button className="bg" onClick={claim} whileTap={{scale:.97}}
+              style={{width:"100%",padding:"13px",fontSize:13,marginTop:4}}>
+              Claim My Discount
+            </motion.button>
+            <button onClick={dismissForSession}
+              style={{display:"block",margin:"14px auto 0",background:"none",border:"none",color:"var(--tm)",fontSize:12,textDecoration:"underline",cursor:"pointer"}}>
+              Don't show this again
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
 const PortalShell = ({
   user,products=[],orders=[],
   onLogin,onLogout,onStaffLogin,
@@ -2258,6 +2638,7 @@ const PortalShell = ({
       <main>
         <HeroSection onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
         <CollectionsSection/>
+        <BestSellersSection products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/>
         <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/></div>
         <AboutSection/>
         <OrderTracking orders={orders}/>
@@ -2271,11 +2652,15 @@ const PortalShell = ({
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
       <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout}/>
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}
-        onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}/>
+        onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}
+        products={products} wishlist={wl} onWishlistToggle={toggleWl} onSelectProduct={setQvProd}/>
       <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} onStaffLogin={handleStaffLogin}/>
       <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
         onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
       <WhatsAppFloat/>
+      <ExitIntentBanner
+        suppress={cartOpen||wlOpen||srchOpen||loginOpen||acctOpen||!!qvProd||checkoutOpen}
+        onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
     </div>
   );
 };
@@ -2316,4 +2701,4 @@ const CustomerPortal = (props) => {
 };
 
 export default CustomerPortal;
-export { PortalShell, ProductCard, CartDrawer, WishlistDrawer, QuickViewModal, SearchOverlay, AccountDrawer, LoginModal, Navbar, IC as Icon, Stars as StarRating, Reveal, SkCard as SkeletonCard, ThemeToggle, useTheme, useToast };
+export { PortalShell, ProductCard, CartDrawer, WishlistDrawer, QuickViewModal, SearchOverlay, AccountDrawer, LoginModal, Navbar, IC as Icon, Stars as StarRating, Reveal, SkCard as SkeletonCard, ThemeToggle, useTheme, useToast, ShareProductButton, BestSellersSection, ExitIntentBanner, isNewArrival, getDiscountInfo };
