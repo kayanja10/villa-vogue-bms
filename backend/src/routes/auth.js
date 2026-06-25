@@ -3,14 +3,12 @@ const express = require('express');
 const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma');
 const { authenticate } = require('../middleware/auth');
 const { sendOtpEmail } = require('../services/emailService');
 
 // FIX: require sessions at module level — NEVER inside a request handler
 const { createSession, TIMEOUTS, WARNINGS } = require('./sessions');
-
-const prisma = new PrismaClient();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
+const { prisma } = require('../prisma');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const prisma = new PrismaClient();
 
 // In-memory session store (fast, no DB overhead)
 // Structure: { tokenId: { userId, username, role, loginTime, lastActivity, ip, userAgent } }

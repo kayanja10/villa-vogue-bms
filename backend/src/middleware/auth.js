@@ -1,6 +1,5 @@
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
+const { prisma } = require('../prisma');
 
 const authenticate = async (req, res, next) => {
   try {
@@ -10,7 +9,15 @@ const authenticate = async (req, res, next) => {
     }
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    // Select only the fields actually needed here, not the full user row
+    // (password hash, etc.) — this runs on EVERY protected request across
+    // the whole app, so trimming the query reduces database load under
+    // concurrent traffic without losing the security benefit of confirming
+    // the user still exists and hasn't been deactivated mid-session.
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: { id: true, username: true, role: true, email: true, isActive: true },
+    });
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'Invalid or inactive user' });
     }
@@ -23,31 +30,42 @@ const authenticate = async (req, res, next) => {
 };
 
 const requireAdmin = (req, res, next) => {
+  // Defensive guard: if a route ever forgets to chain `authenticate` before
+  // this middleware, req.user would be undefined and req.user.role would
+  // throw an uncaught TypeError, 500-ing the request with a confusing error
+  // instead of a clear "unauthenticated" message. This can never crash now,
+  // even if a future route is wired up incorrectly.
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
   if (req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
   next();
 };
 
 const requireManagerOrAdmin = (req, res, next) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentication required' });
   if (!['admin', 'manager'].includes(req.user.role)) return res.status(403).json({ error: 'Manager or admin access required' });
   next();
 };
 
-const logActivity = (action, entityType) => async (req, res, next) => {
+const logActivity = (action, entityType) => (req, res, next) => {
   const originalJson = res.json.bind(res);
-  res.json = async (data) => {
+  res.json = (data) => {
+    // Send the actual response immediately — don't make the customer/staff
+    // member wait for the activity log write to finish. The previous version
+    // made res.json itself async, which delayed every response on this
+    // middleware until the database write completed, and any synchronous
+    // error before reaching the try/catch could have left the response
+    // unsent entirely. Logging now happens fully in the background.
     if (res.statusCode < 400 && req.user) {
-      try {
-        await prisma.activityLog.create({
-          data: {
-            userId: req.user.id,
-            username: req.user.username,
-            action,
-            entityType,
-            entityId: String(data?.id || req.params?.id || ''),
-            details: JSON.stringify({ method: req.method, path: req.path }),
-          }
-        });
-      } catch (e) { /* silent fail */ }
+      prisma.activityLog.create({
+        data: {
+          userId: req.user.id,
+          username: req.user.username,
+          action,
+          entityType,
+          entityId: String(data?.id || req.params?.id || ''),
+          details: JSON.stringify({ method: req.method, path: req.path }),
+        }
+      }).catch(() => { /* silent fail — logging should never break the request */ });
     }
     return originalJson(data);
   };
