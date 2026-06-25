@@ -1526,11 +1526,13 @@ const ShareProductButton = ({ product: p, compact = false }) => {
   if (!p) return null;
   const url = getProductUrl(p);
   const text = getShareText(p);
+  // Primary action: WhatsApp is by far the most-used sharing channel for this
+  // storefront, so the main button opens it directly — no extra menu needed.
+  const waHref = `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}`;
 
   const handleNativeShare = async () => {
     // Try to attach the actual product image as a shareable file (supported
-    // on most mobile browsers); silently fall back to text+url share, and
-    // finally to the link-menu, if anything along the way isn't supported.
+    // on most mobile browsers); silently fall back to text+url share.
     try {
       const shareData = { title: p.name, text, url };
       if (navigator.canShare && getPrimaryImage(p)) {
@@ -1541,36 +1543,44 @@ const ShareProductButton = ({ product: p, compact = false }) => {
           if (navigator.canShare({ files: [file] })) shareData.files = [file];
         } catch { /* image fetch/CORS failed — share without the file */ }
       }
-      if (navigator.share) { await navigator.share(shareData); return; }
+      if (navigator.share) await navigator.share(shareData);
     } catch (err) {
-      if (err?.name === "AbortError") return; // user cancelled — do nothing
+      if (err?.name !== "AbortError") toast("Couldn't open the share sheet", "e", "!");
     }
-    setMenuOpen(true); // no native share support → show link menu
+    setMenuOpen(false);
   };
 
+  // Everything besides WhatsApp lives in the small secondary menu.
   const links = [
-    { key: "wa", label: "WhatsApp", icon: "wa", color: "#25D366", href: `https://wa.me/?text=${encodeURIComponent(`${text}\n${url}`)}` },
     { key: "fb", label: "Facebook", icon: "facebook", color: "#1877F2", href: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(text)}` },
     { key: "x", label: "X (Twitter)", icon: "twitterx", color: "var(--tp)", href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}` },
     { key: "mail", label: "Email", icon: "mail", color: "var(--tp)", href: `mailto:?subject=${encodeURIComponent(`Check out ${p.name} on Villa Vogue`)}&body=${encodeURIComponent(`${text}\n\n${url}`)}` },
   ];
 
   return (
-    <div ref={wrapRef} style={{ position: "relative", display: "inline-block" }}>
-      <motion.button
-        whileTap={{ scale: .96 }}
-        onClick={() => (typeof navigator !== "undefined" && navigator.share ? handleNativeShare() : setMenuOpen(o => !o))}
-        className={compact ? "" : "bgh"}
-        title="Share Product with a Friend"
+    <div ref={wrapRef} style={{ position: "relative", display: "flex", gap: 8, width: compact ? "auto" : "100%" }}>
+      {/* Primary — always opens WhatsApp with the product name, price & link */}
+      <motion.a
+        href={waHref} target="_blank" rel="noopener noreferrer"
+        whileTap={{ scale: .96 }} title="Share Product with a Friend"
         style={compact
-          ? { width: 34, height: 34, borderRadius: "50%", background: "var(--bg)", backdropFilter: "blur(10px)", border: "1px solid var(--br)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }
-          : { padding: "11px", fontSize: 12, width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer" }}>
-        <IC n="share" sz={compact ? 14 : 13} c={compact ? "var(--ts)" : "currentColor"} />
+          ? { width: 34, height: 34, borderRadius: "50%", background: "#25D366", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", textDecoration: "none" }
+          : { flex: 1, padding: "11px", fontSize: 12, fontWeight: 600, background: "#25D366", color: "#fff", border: "none", borderRadius: 50, display: "flex", alignItems: "center", justifyContent: "center", gap: 7, cursor: "pointer", textDecoration: "none" }}>
+        <IC n="wa" sz={compact ? 14 : 14} c={compact ? "#fff" : "#fff"} />
         {!compact && "Share Product with a Friend"}
+      </motion.a>
+      {/* Secondary — Facebook / X / Email / native share / copy link */}
+      <motion.button
+        whileTap={{ scale: .96 }} onClick={() => setMenuOpen(o => !o)} title="More sharing options"
+        style={{ width: compact ? 34 : 40, height: compact ? 34 : 40, borderRadius: compact ? "50%" : 12, background: "var(--ib)", border: "1px solid var(--br)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", flexShrink: 0 }}>
+        <IC n="share" sz={14} c="var(--ts)" />
       </motion.button>
       <AnimatePresence>
         {menuOpen && (
           <motion.div className="share-menu" initial={{ opacity: 0, y: -6, scale: .96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6, scale: .96 }}>
+            {typeof navigator !== "undefined" && navigator.share && (
+              <button onClick={handleNativeShare}><IC n="share" sz={15} c="var(--gold)" /> More options…</button>
+            )}
             {links.map(l => (
               <a key={l.key} href={l.href} target="_blank" rel="noopener noreferrer" onClick={() => setMenuOpen(false)}>
                 <IC n={l.icon} sz={15} c={l.color} /> {l.label}
@@ -1592,21 +1602,39 @@ const ShareProductButton = ({ product: p, compact = false }) => {
 
 const PRODUCTS_PER_PAGE = 8;
 
-const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading}) => {
+const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading,externalFilter,filterNonce}) => {
   const [visible, setVisible] = useState(PRODUCTS_PER_PAGE);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  // "quick" is either null, "new" (New Arrivals) or "sale" (Sale) — applied
+  // on top of the category filter. Category-name filters (Wedding, etc.)
+  // just set activeCategory directly below.
+  const [quick, setQuick] = useState(null);
+
+  // Driven by the footer/navbar "Shop" links (see PortalShell). filterNonce
+  // increments on every click so re-clicking the same link still re-applies
+  // the filter and re-scrolls, even if it's already active.
+  useEffect(() => {
+    if (!externalFilter) return;
+    if (externalFilter === "new" || externalFilter === "sale") {
+      setQuick(externalFilter); setActiveCategory("All");
+    } else {
+      setQuick(null); setActiveCategory(externalFilter);
+    }
+    setSearch(""); setVisible(PRODUCTS_PER_PAGE);
+  }, [externalFilter, filterNonce]);
 
   const dp = (products || []).map(normalizeProduct);
 
   // Build category list from real products
   const categories = ["All", ...Array.from(new Set(dp.map(p => p.category).filter(Boolean)))];
 
-  // Filter by search + category
+  // Filter by search + category + quick filter
   const filtered = dp.filter(p => {
     const matchCat = activeCategory === "All" || p.category === activeCategory;
     const matchSearch = !search || p.name?.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase());
-    return matchCat && matchSearch;
+    const matchQuick = quick === "new" ? isNewArrival(p) : quick === "sale" ? !!p.is_sale : true;
+    return matchCat && matchSearch && matchQuick;
   });
 
   const shown = filtered.slice(0, visible);
@@ -1620,9 +1648,13 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
             <div>
               <span className="ll">Our Collection</span>
               <h2 className="sl" style={{fontSize:"clamp(24px,3.5vw,40px)",marginTop:8}}>
-                {activeCategory === "All" ? "All Products" : activeCategory}
+                {quick==="new" ? "New Arrivals" : quick==="sale" ? "Sale" : activeCategory === "All" ? "All Products" : activeCategory}
                 {!loading && dp.length > 0 && <span style={{fontSize:14,fontWeight:400,color:"var(--tm)",marginLeft:10}}>({filtered.length} items)</span>}
               </h2>
+              {quick&&(
+                <button onClick={()=>{setQuick(null);setVisible(PRODUCTS_PER_PAGE);}} className="bgh"
+                  style={{marginTop:8,padding:"4px 12px",fontSize:11}}>✕ Clear "{quick==="new"?"New Arrivals":"Sale"}" filter</button>
+              )}
             </div>
           </div>
         </Reveal>
@@ -1729,7 +1761,7 @@ const BestSellersSection = ({products,wishlist,onAddToCart,onQuickView,onWishlis
   if (!loading && ranked.length === 0) return null; // nothing to show yet — don't render an empty section
 
   return (
-    <section style={{padding:"60px 0",background:"var(--bp)"}}>
+    <section id="best-sellers" style={{padding:"60px 0",background:"var(--bp)"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
         <Reveal>
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:32}}>
@@ -1809,7 +1841,7 @@ const LoyaltySection = ({user,onJoinClick}) => {
     {n:"VIP",p:"50K+",c:"t5",pk:["20% cashback","Concierge","Bespoke tailoring"]},
   ];
   return (
-    <section style={{padding:"80px 0",background:"var(--bs)"}}>
+    <section id="loyalty" style={{padding:"80px 0",background:"var(--bs)"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
         <Reveal><div style={{textAlign:"center",marginBottom:50}}>
           <span className="ll">Rewards Program</span>
@@ -1914,7 +1946,18 @@ const Newsletter = () => {
   );
 };
 
-const Footer = () => (
+// Footer link → destination map. Shop links are real category names that
+// must match your backend's actual product.category values — if a category
+// here doesn't match what's in your DB, FeaturedProducts will just show its
+// existing "No products found" state for that filter (not a crash), but you
+// should double check these strings against your real categories.
+const FOOTER_LINKS = {
+  Shop: ["New Arrivals","Best Sellers","Wedding","Corporate","Accessories","Sale"],
+  Account: ["Sign In","Register","My Orders","Wishlist","Loyalty Rewards","Gift Cards"],
+  Support: ["Contact Us","Size Guide","Returns","Shipping Info","FAQs"],
+};
+
+const Footer = ({onLinkClick}) => (
   <footer className="vf">
     <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(183px,1fr))",gap:44,marginBottom:44}}>
@@ -1943,20 +1986,26 @@ const Footer = () => (
             </a>
           </div>
         </div>
-        {[
-          {t:"Shop",l:["New Arrivals","Best Sellers","Wedding","Corporate","Accessories","Sale"]},
-          {t:"Account",l:["Sign In","Register","My Orders","Wishlist","Loyalty Rewards","Gift Cards"]},
-          {t:"Support",l:["Contact Us","Size Guide","Returns","Shipping Info","FAQs"]},
-        ].map(col=>(
-          <div key={col.t}>
-            <p className="ll" style={{marginBottom:16}}>{col.t}</p>
+        {Object.entries(FOOTER_LINKS).map(([t,l])=>(
+          <div key={t}>
+            <p className="ll" style={{marginBottom:16}}>{t}</p>
             <div style={{display:"flex",flexDirection:"column",gap:9}}>
-              {col.l.map(lk=>(
-                <a key={lk} href="#" style={{fontSize:13,color:"var(--tm)",textDecoration:"none",transition:"color .2s"}}
-                  onMouseEnter={e=>e.target.style.color="var(--gold)"}
-                  onMouseLeave={e=>e.target.style.color="var(--tm)"}>{lk}</a>
-              ))}
-              {col.t==="Support"&&(
+              {l.map(lk=>{
+                // "Contact Us" goes straight to WhatsApp with a real href —
+                // every other link is dispatched through onLinkClick so
+                // PortalShell can scroll/filter/open the right modal.
+                const isContact = lk==="Contact Us";
+                return (
+                  <a key={lk}
+                    href={isContact?"https://wa.me/256782860372?text=Hi%20Villa%20Vogue!%20I%20have%20a%20question.":"#"}
+                    target={isContact?"_blank":undefined} rel={isContact?"noopener noreferrer":undefined}
+                    onClick={isContact?undefined:(e=>{e.preventDefault();onLinkClick?.(lk);})}
+                    style={{fontSize:13,color:"var(--tm)",textDecoration:"none",transition:"color .2s",cursor:"pointer"}}
+                    onMouseEnter={e=>e.target.style.color="var(--gold)"}
+                    onMouseLeave={e=>e.target.style.color="var(--tm)"}>{lk}</a>
+                );
+              })}
+              {t==="Support"&&(
                 <a href="/track" style={{fontSize:13,color:"var(--tm)",textDecoration:"none",transition:"color .2s"}}
                   onMouseEnter={e=>e.target.style.color="var(--gold)"}
                   onMouseLeave={e=>e.target.style.color="var(--tm)"}>Track Order</a>
@@ -1980,12 +2029,87 @@ const Footer = () => (
   </footer>
 );
 
-const LoginModal = ({open,onClose,onLogin,onStaffLogin}) => {
-  const [mode,setMode]=useState("login"); // login | register
+// ── Generic info modal for footer Support links ─────────────────────────────
+// ⚠️ The copy below is placeholder text so these links are functional right
+// now — swap it for your real Returns/Shipping/Size policies before launch.
+const INFO_CONTENT = {
+  size: {
+    title: "Size Guide",
+    body: (
+      <>
+        <p style={{marginBottom:10}}>Find your fit using the general chart below. Sizing can vary slightly by style — when in doubt, message us on WhatsApp with your measurements and we'll help you pick.</p>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,fontSize:12,marginTop:14}}>
+          {[["Size","Bust (in)"],["XS","32-33"],["S","34-35"],["M","36-37"],["L","38-40"],["XL","41-43"],["XXL","44-46"]].map((row,i)=>(
+            <React.Fragment key={i}>
+              <div style={{fontWeight:i===0?700:500,color:i===0?"var(--gold)":"var(--ts)",padding:"6px 0",borderBottom:"1px solid var(--br)"}}>{row[0]}</div>
+              <div style={{gridColumn:"2/5",padding:"6px 0",borderBottom:"1px solid var(--br)",color:"var(--ts)"}}>{row[1]}</div>
+            </React.Fragment>
+          ))}
+        </div>
+      </>
+    ),
+  },
+  returns: {
+    title: "Returns",
+    body: <p>We want you to love your Villa Vogue pieces. If something isn't right, message us on WhatsApp within a few days of receiving your order with your order number and we'll sort out an exchange or return.</p>,
+  },
+  shipping: {
+    title: "Shipping Info",
+    body: <p>We deliver across Uganda. Delivery time and cost depend on your location and will be confirmed with you on WhatsApp or at checkout before your order is dispatched.</p>,
+  },
+  faq: {
+    title: "Frequently Asked Questions",
+    body: (
+      <>
+        <p style={{fontWeight:600,marginBottom:4}}>How do I place an order?</p>
+        <p style={{marginBottom:14}}>Add items to your cart and checkout online, or order directly via WhatsApp.</p>
+        <p style={{fontWeight:600,marginBottom:4}}>What payment methods do you accept?</p>
+        <p style={{marginBottom:14}}>Mobile Money and other options confirmed at checkout.</p>
+        <p style={{fontWeight:600,marginBottom:4}}>Can I track my order?</p>
+        <p>Yes — use the Track Order link in the footer.</p>
+      </>
+    ),
+  },
+  giftcards: {
+    title: "Gift Cards",
+    body: <p>Villa Vogue gift cards are launching soon! Follow us on Facebook or TikTok, or check back here, for the announcement.</p>,
+  },
+};
+
+const InfoModal = ({open,onClose,contentKey}) => {
+  const c = contentKey ? INFO_CONTENT[contentKey] : null;
+  return (
+    <AnimatePresence>
+      {open&&c&&(
+        <motion.div className="mb" onClick={e=>e.target===e.currentTarget&&onClose()}
+          initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} style={{zIndex:2600}}>
+          <motion.div initial={{opacity:0,scale:.94,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,scale:.96}}
+            style={{position:"relative",background:"var(--bgs)",backdropFilter:"blur(32px)",border:"1px solid var(--br)",
+              borderRadius:"var(--rxl)",padding:"32px 30px",width:"100%",maxWidth:480,maxHeight:"80vh",overflowY:"auto",boxShadow:"var(--sl)"}}>
+            <button onClick={onClose} style={{position:"absolute",top:18,right:18,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}>
+              <IC n="x" sz={15}/>
+            </button>
+            <p className="ll" style={{marginBottom:8}}>Villa Vogue</p>
+            <h2 className="sl" style={{fontSize:26,fontWeight:300,marginBottom:14,paddingRight:24}}>{c.title}</h2>
+            <div style={{fontSize:14,color:"var(--ts)",lineHeight:1.8}}>{c.body}</div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const LoginModal = ({open,onClose,onLogin,onStaffLogin,initialMode="login"}) => {
+  const [mode,setMode]=useState(initialMode); // login | register
   const [ld,setLd]=useState(false);
   const toast=useToast();
   const [form,setForm]=useState({name:"",email:"",phone:"",password:"",confirm:""});
   const fi=(f,v)=>setForm(p=>({...p,[f]:v}));
+
+  // Re-sync to whichever mode the caller asked for every time the modal opens
+  // (Sign In vs Register link in the footer/navbar) — without this the modal
+  // would just stay stuck on whatever mode was last left open.
+  useEffect(()=>{ if(open) setMode(initialMode); },[open,initialMode]);
 
   const handleLogin=async()=>{
     if(!form.email||!form.password){toast("Please fill in all fields","e","!");return;}
@@ -2599,6 +2723,11 @@ const PortalShell = ({
   const [acctOpen,setAcctOpen]=useState(false);
   const [qvProd,setQvProd]=useState(null);
   const [checkoutOpen,setCheckoutOpen]=useState(false);
+  // ── Footer link wiring ──────────────────────────────────────────────────
+  const [shopFilter,setShopFilter]=useState(null);     // "new" | "sale" | category name | null
+  const [shopFilterNonce,setShopFilterNonce]=useState(0); // bump to re-trigger even on the same link
+  const [loginMode,setLoginMode]=useState("login");    // "login" | "register"
+  const [infoModal,setInfoModal]=useState(null);       // "size" | "returns" | "shipping" | "faq" | "giftcards" | null
 
   useEffect(()=>{localStorage.setItem("vv_cart",JSON.stringify(cart));},[cart]);
   useEffect(()=>{localStorage.setItem("vv_wishlist",JSON.stringify(wl));},[wl]);
@@ -2626,6 +2755,59 @@ const PortalShell = ({
     setStaffMode(true);setLoginOpen(true);
   },[onStaffLogin]);
 
+  const toast=useToast();
+  const scrollToId=(id)=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"});
+
+  // Single dispatcher for every footer link — keeps Footer itself dumb/reusable
+  // while PortalShell (which holds all the relevant state) decides what each
+  // link actually does.
+  const handleFooterLink=useCallback((label)=>{
+    switch(label){
+      // Shop — filters Featured Products and scrolls to it
+      case "New Arrivals":
+        setShopFilter("new");setShopFilterNonce(n=>n+1);
+        requestAnimationFrame(()=>scrollToId("featured"));
+        break;
+      case "Sale":
+        setShopFilter("sale");setShopFilterNonce(n=>n+1);
+        requestAnimationFrame(()=>scrollToId("featured"));
+        break;
+      case "Best Sellers":
+        scrollToId("best-sellers");
+        break;
+      case "Wedding": case "Corporate": case "Accessories":
+        setShopFilter(label);setShopFilterNonce(n=>n+1);
+        requestAnimationFrame(()=>scrollToId("featured"));
+        break;
+      // Account
+      case "Sign In":
+        setStaffMode(false);setLoginMode("login");setLoginOpen(true);
+        break;
+      case "Register":
+        setStaffMode(false);setLoginMode("register");setLoginOpen(true);
+        break;
+      case "My Orders":
+        if(user){setAcctOpen(true);}
+        else{toast("Please sign in to view your orders","i","i");setStaffMode(false);setLoginMode("login");setLoginOpen(true);}
+        break;
+      case "Wishlist":
+        setWlOpen(true);
+        break;
+      case "Loyalty Rewards":
+        scrollToId("loyalty");
+        break;
+      case "Gift Cards":
+        setInfoModal("giftcards");
+        break;
+      // Support
+      case "Size Guide": setInfoModal("size"); break;
+      case "Returns": setInfoModal("returns"); break;
+      case "Shipping Info": setInfoModal("shipping"); break;
+      case "FAQs": setInfoModal("faq"); break;
+      default: break;
+    }
+  },[user,toast]);
+
   return (
     <div className="vv-portal">
       <Navbar user={user} cart={cart} wishlist={wl}
@@ -2639,14 +2821,16 @@ const PortalShell = ({
         <HeroSection onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
         <CollectionsSection/>
         <BestSellersSection products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/>
-        <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/></div>
+        <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}
+          externalFilter={shopFilter} filterNonce={shopFilterNonce}/></div>
         <AboutSection/>
         <OrderTracking orders={orders}/>
         <LoyaltySection user={user} onJoinClick={()=>{setStaffMode(false);setLoginOpen(true);}}/>
         <Testimonials/>
         <Newsletter/>
       </main>
-      <Footer/>
+      <Footer onLinkClick={handleFooterLink}/>
+      <InfoModal open={!!infoModal} contentKey={infoModal} onClose={()=>setInfoModal(null)}/>
       <AnimatePresence>{srchOpen&&<SearchOverlay open={srchOpen} onClose={()=>setSrchOpen(false)} products={products}/>}</AnimatePresence>
       <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart} onCheckout={()=>setCheckoutOpen(true)}/>
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
@@ -2654,7 +2838,7 @@ const PortalShell = ({
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}
         onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}
         products={products} wishlist={wl} onWishlistToggle={toggleWl} onSelectProduct={setQvProd}/>
-      <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} onStaffLogin={handleStaffLogin}/>
+      <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} onStaffLogin={handleStaffLogin} initialMode={loginMode}/>
       <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
         onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
       <WhatsAppFloat/>
@@ -2701,4 +2885,4 @@ const CustomerPortal = (props) => {
 };
 
 export default CustomerPortal;
-export { PortalShell, ProductCard, CartDrawer, WishlistDrawer, QuickViewModal, SearchOverlay, AccountDrawer, LoginModal, Navbar, IC as Icon, Stars as StarRating, Reveal, SkCard as SkeletonCard, ThemeToggle, useTheme, useToast, ShareProductButton, BestSellersSection, ExitIntentBanner, isNewArrival, getDiscountInfo };
+export { PortalShell, ProductCard, CartDrawer, WishlistDrawer, QuickViewModal, SearchOverlay, AccountDrawer, LoginModal, InfoModal, Navbar, IC as Icon, Stars as StarRating, Reveal, SkCard as SkeletonCard, ThemeToggle, useTheme, useToast, ShareProductButton, BestSellersSection, ExitIntentBanner, isNewArrival, getDiscountInfo };
