@@ -45,6 +45,8 @@ const ALLOWED_ORIGINS = [
   'https://villa-vogue-bms-b16k.vercel.app',  // old deployment
   'https://villa-vogue-bms-dpth.vercel.app',  // current deployment
   /^https:\/\/villa-vogue-bms.*\.vercel\.app$/, // all future preview deployments
+  'https://villavoguefashion.com',            // custom domain (no www)
+  'https://www.villavoguefashion.com',        // custom domain (www)
 ];
 
 app.use(cors({
