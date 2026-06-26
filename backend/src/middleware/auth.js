@@ -29,6 +29,40 @@ const authenticate = async (req, res, next) => {
   }
 };
 
+// ── Customer portal authentication ──────────────────────────────────────────
+// Separate from `authenticate` above on purpose: portal tokens are signed
+// with { customerId } (see routes/customers.js portal/login + portal/register),
+// not { userId } like staff tokens, and they map to the `customer` table, not
+// `user`. Previously there was NO middleware at all for this — a logged-in
+// customer had no way to authenticate for their own orders or a refreshed
+// loyalty balance, which is why the account drawer always showed zeros.
+const authenticateCustomer = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    const token = authHeader.split(' ')[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!decoded.customerId) {
+      // A staff token (signed with userId) was sent here by mistake, or vice versa
+      return res.status(401).json({ error: 'Invalid token for this endpoint' });
+    }
+    const customer = await prisma.customer.findUnique({
+      where: { id: decoded.customerId },
+      select: { id: true, name: true, email: true, phone: true, loyaltyPoints: true, tier: true, createdAt: true, isActive: true },
+    });
+    if (!customer || !customer.isActive) {
+      return res.status(401).json({ error: 'Invalid or inactive customer account' });
+    }
+    req.customer = customer;
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') return res.status(401).json({ error: 'Token expired' });
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
 const requireAdmin = (req, res, next) => {
   // Defensive guard: if a route ever forgets to chain `authenticate` before
   // this middleware, req.user would be undefined and req.user.role would
@@ -72,4 +106,4 @@ const logActivity = (action, entityType) => (req, res, next) => {
   next();
 };
 
-module.exports = { authenticate, requireAdmin, requireManagerOrAdmin, logActivity };
+module.exports = { authenticate, authenticateCustomer, requireAdmin, requireManagerOrAdmin, logActivity };

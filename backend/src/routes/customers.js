@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
-const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
+const { authenticate, authenticateCustomer, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
@@ -89,6 +89,15 @@ router.post('/portal/register', async (req, res) => {
     const token = jwt.sign({ customerId: customer.id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     res.status(201).json({ token, customer: { id: customer.id, name: customer.name, email: customer.email } });
   } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// GET /api/customers/portal/me — refreshed profile for the logged-in portal
+// customer. portal/login only ever returns a snapshot taken at login time
+// (and never included createdAt at all), so loyaltyPoints/tier go stale the
+// moment a new order is placed. The frontend calls this to refresh those
+// values without forcing the customer to log out and back in.
+router.get('/portal/me', authenticateCustomer, async (req, res) => {
+  res.json(req.customer);
 });
 
 module.exports = router;

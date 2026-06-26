@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { prisma } = require('../prisma');
-const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
+const { authenticate, authenticateCustomer, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 
 function generateOrderNumber() {
   const date = new Date();
@@ -68,6 +68,23 @@ router.get('/', authenticate, async (req, res) => {
     ]);
 
     res.json({ orders, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/orders/my-orders — order history for the logged-in customer portal
+// user, scoped strictly to req.customer.id so one customer can never see
+// another's orders. This MUST be registered before GET /:id below, since
+// "/my-orders" is a single path segment — if /:id came first, Express would
+// match it as id="my-orders" and 404/error instead of reaching this handler.
+router.get('/my-orders', authenticateCustomer, async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { customerId: req.customer.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ orders });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
