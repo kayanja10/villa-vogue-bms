@@ -3,6 +3,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from "react";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
+import { io } from "socket.io-client";
 
 // Native IntersectionObserver — works with ANY framer-motion version
 function useInView(ref, { once = true, margin = "0px" } = {}) {
@@ -103,7 +104,7 @@ const useToast = () => useContext(ToastCtx);
       .lucky-code{border:1.5px dashed var(--gold);border-radius:12px;padding:12px 18px;font-family:var(--fd);font-size:22px;letter-spacing:.1em;color:var(--gold);font-weight:600;display:inline-block;margin:14px 0}
       @media(max-width:480px){.exit-banner{padding:28px 20px 22px}}
       @media(max-width:900px){.dn{display:none!important}}
-      @media(max-width:768px){.mm{min-width:calc(100vw - 32px)}.vd{width:100vw}.vm>div{grid-template-columns:1fr!important}}
+      @media(max-width:768px){.mm{min-width:calc(100vw - 32px)}.vd{width:100vw}.vm>div{grid-template-columns:1fr!important}.about-grid{grid-template-columns:1fr!important}}
     `;
   document.head.appendChild(s);
 })();
@@ -149,6 +150,7 @@ const IC = ({ n, sz=20, c="currentColor" }) => {
     share:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
     flame:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M12 2c1 3-3 4-3 8a3 3 0 006 0c0-1-.4-1.8-1-2.5 1.8.6 4 2.6 4 6.5a6 6 0 11-12 0c0-5 3-8 6-12z"/></svg>,
     sparkle:<svg width={sz} height={sz} fill={c} viewBox="0 0 24 24"><path d="M12 1l2 7 7 2-7 2-2 7-2-7-7-2 7-2z"/></svg>,
+    globe:<svg width={sz} height={sz} fill="none" stroke={c} strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>,
   };
   return <span style={{display:"inline-flex",alignItems:"center"}}>{ic[n]||null}</span>;
 };
@@ -823,6 +825,9 @@ const CartDrawer = ({open,onClose,cart,onUpdateQty,onRemove,onCheckout}) => {
 
 // ── Checkout Modal — places real order to backend ────────────────────────────
 const BASE_API = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
+// Socket.IO connects to the server root, not the /api path — strip it off BASE_API
+// so this stays correct automatically if VITE_API_URL ever changes.
+const SOCKET_URL = BASE_API.replace(/\/api\/?$/, '');
 
 // Major towns, cities, and Kampala suburbs across Uganda — alphabetically sorted, "Other" always last
 const UGANDA_AREAS = [
@@ -1312,15 +1317,26 @@ const AboutSection = () => (
   <section style={{padding:"80px 0",background:"var(--bp)"}}>
     <div style={{maxWidth:1100,margin:"0 auto",padding:"0 24px"}}>
       <Reveal>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:56,alignItems:"center",flexWrap:"wrap"}}>
+        <div className="about-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:56,alignItems:"center"}}>
           {/* Founder photo */}
-          <div style={{position:"relative"}}>
-            <div style={{borderRadius:24,overflow:"hidden",aspectRatio:"3/4",background:"var(--bt)",maxHeight:520}}>
+          <div style={{position:"relative",maxWidth:420,margin:"0 auto",width:"100%"}}>
+            {/* NOTE: container uses only aspectRatio (no maxHeight) so the box never
+                gets clamped to a size that forces objectFit:cover to upscale/crop the
+                source image unexpectedly — that combo was the main cause of visible
+                blur here. The other half of the fix is the source file itself: if
+                "me-now.jpg" on postimg.cc is below ~900px wide, it will still look
+                soft at this display size no matter what CSS does — re-upload a
+                version that's at least 1200x1600px to a host that doesn't recompress
+                (e.g. Cloudinary, or your own /api/uploads/image endpoint) for a
+                guaranteed sharp result. */}
+            <div style={{borderRadius:24,overflow:"hidden",aspectRatio:"3/4",background:"var(--bt)"}}>
               <img
                 src="https://i.postimg.cc/ZWrF3t86/me-now.jpg"
                 onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
                 alt="Kayanja Wilfred — Founder, Villa Vogue"
-                style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}
+                loading="eager"
+                decoding="async"
+                style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top",imageRendering:"auto"}}
               />
               {/* Fallback initials */}
               <div style={{display:"none",width:"100%",height:"100%",background:"linear-gradient(135deg,#1a1a1a,#2d2d2d)",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}>
@@ -1792,14 +1808,16 @@ const BestSellersSection = ({products,wishlist,onAddToCart,onQuickView,onWishlis
 };
 
 const OrderTracking = ({orders=[]}) => {
-  const steps=[
-    {k:"received",l:"Order Received",i:"pkg"},{k:"confirmed",l:"Confirmed",i:"check"},
-    {k:"preparing",l:"Preparing",i:"tag"},{k:"packed",l:"Packed",i:"pkg"},
-    {k:"shipped",l:"Shipped",i:"truck"},{k:"out_for_delivery",l:"Out for Delivery",i:"pin"},
-    {k:"delivered",l:"Delivered",i:"check"},
-  ];
-  const act=orders[0];
-  const ai=act?steps.findIndex(s=>s.k===act.status):1;
+  // FIX: this used to define its OWN step keys (received/preparing/packed/
+  // shipped/out_for_delivery) that don't exist anywhere in the backend's
+  // actual order lifecycle — so a real order sitting at "confirmed" never
+  // matched any step here and just silently fell back to index 1. Now it
+  // shares the same canonical STATUS_STEPS/ORDER_STATUS_INFO map used by the
+  // Orders tab, so this section and the account drawer can never disagree.
+  const act = orders[0];
+  const actStatus = act ? (act.orderStatus || act.status || "pending") : "confirmed";
+  const actInfo = ORDER_STATUS_INFO[actStatus] || ORDER_STATUS_INFO.pending;
+  const cancelled = actInfo.step === -1;
   return (
     <section style={{padding:"80px 0",background:"var(--bp)"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
@@ -1807,24 +1825,36 @@ const OrderTracking = ({orders=[]}) => {
         <Reveal delay={.1}>
           <div className="gc" style={{maxWidth:620,margin:"0 auto",padding:32}}>
             {act?(
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}>
-                <div><p className="ll">Order #{act.id}</p><p style={{fontFamily:"var(--fd)",fontSize:18,marginTop:4}}>{act.item||"Your Recent Order"}</p></div>
-                <span className="lb" style={{alignSelf:"flex-start"}}>{act.status?.replace("_"," ")}</span>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:8}}>
+                <div><p className="ll">Order #{act.orderNumber||act.id}</p><p style={{fontFamily:"var(--fd)",fontSize:18,marginTop:4}}>{act.item||"Your Recent Order"}</p></div>
+                <OrderStatusBadge status={actStatus}/>
               </div>
             ):(
               <div style={{marginBottom:20}}><p className="ll" style={{marginBottom:6}}>Example Tracking</p><p style={{color:"var(--tm)",fontSize:13}}>This is how your order progress appears</p></div>
             )}
-            <div style={{display:"flex",flexDirection:"column"}}>
-              {steps.map((step,i)=>(
-                <div key={step.k} className="ts">
-                  <div className={`td ${i<=ai?"on":""}`}>{i<=ai&&<IC n={step.i} sz={9} c="#000"/>}</div>
-                  <div style={{paddingBottom:i<steps.length-1?18:0}}>
-                    <p style={{fontSize:13,fontWeight:i<=ai?600:400,color:i<=ai?"var(--tp)":"var(--tm)"}}>{step.l}</p>
-                    {i===ai&&<p style={{fontSize:11,color:"var(--gold)",marginTop:2}}>Current Status</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
+            {cancelled?(
+              <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 0"}}>
+                <IC n="x" sz={16} c={actInfo.color}/>
+                <span style={{fontSize:14,fontWeight:600,color:actInfo.color}}>This order was {actInfo.label.toLowerCase()}</span>
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column"}}>
+                {STATUS_STEPS.map((s,i)=>{
+                  const stepInfo = ORDER_STATUS_INFO[s];
+                  const reached = actInfo.step >= stepInfo.step;
+                  const current = s===actStatus;
+                  return (
+                    <div key={s} className="ts">
+                      <div className={`td ${reached?"on":""}`}>{reached&&<IC n={stepInfo.icon} sz={9} c="#000"/>}</div>
+                      <div style={{paddingBottom:i<STATUS_STEPS.length-1?18:0}}>
+                        <p style={{fontSize:13,fontWeight:reached?600:400,color:reached?"var(--tp)":"var(--tm)"}}>{stepInfo.label}</p>
+                        {current&&<p style={{fontSize:11,color:"var(--gold)",marginTop:2}}>Current Status</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </Reveal>
       </div>
@@ -1983,6 +2013,20 @@ const Footer = ({onLinkClick}) => (
               onMouseEnter={e=>{e.currentTarget.style.background="#000";e.currentTarget.style.borderColor="#000";}}
               onMouseLeave={e=>{e.currentTarget.style.background="var(--ib)";e.currentTarget.style.borderColor="var(--br)";}}>
               <IC n="tiktok" sz={16} c="var(--ts)"/>
+            </a>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:16}}>
+            <a href="mailto:info@villavoguefashion.com"
+              style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12.5,color:"var(--tm)",textDecoration:"none"}}
+              onMouseEnter={e=>{e.currentTarget.style.color="var(--gold)";}}
+              onMouseLeave={e=>{e.currentTarget.style.color="var(--tm)";}}>
+              <IC n="mail" sz={14} c="currentColor"/> info@villavoguefashion.com
+            </a>
+            <a href="https://villavoguefashion.com" target="_blank" rel="noopener noreferrer"
+              style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12.5,color:"var(--tm)",textDecoration:"none"}}
+              onMouseEnter={e=>{e.currentTarget.style.color="var(--gold)";}}
+              onMouseLeave={e=>{e.currentTarget.style.color="var(--tm)";}}>
+              <IC n="globe" sz={14} c="currentColor"/> villavoguefashion.com
             </a>
           </div>
         </div>
@@ -2393,30 +2437,9 @@ const ReviewForm = ({orders=[],userName=""}) => {
 };
 
 const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
-  // Local copy of orders that can be live-updated via socket when staff changes status —
-  // without this, the customer would need to close/reopen the drawer to see updates
-  const [liveOrders,setLiveOrders] = useState(orders);
-  useEffect(()=>{ setLiveOrders(orders); },[orders]);
-
-  // Listen for real-time status changes broadcast from the staff dashboard
-  useEffect(()=>{
-    const socket = window.__vv_socket || window.socket;
-    if(!socket) return;
-    const handler = (update) => {
-      setLiveOrders(prev => prev.map(o =>
-        (o.id===update.orderId || o.orderNumber===update.orderNumber)
-          ? { ...o, orderStatus: update.status }
-          : o
-      ));
-    };
-    socket.on('order:status-public', handler);
-    socket.on('order:status-changed', handler);
-    return () => {
-      socket.off('order:status-public', handler);
-      socket.off('order:status-changed', handler);
-    };
-  },[]);
-
+  // `orders` is now kept live by PortalShell (single socket connection shared
+  // across the whole portal) — no need to duplicate listener logic here.
+  const liveOrders = orders;
   const [tab,setTab]=useState("overview");
   const tabs=[
     {k:"overview",l:"Overview",i:"user"},{k:"orders",l:"Orders",i:"pkg"},
@@ -2711,6 +2734,7 @@ const PortalShell = ({
   onAddToCart:extAdd,
   onRemoveFromCart:extRemove,
   onUpdateCartQty:extUpdate,
+  onRefreshOrders, // optional: parent-provided refetch, used as a fallback alongside the socket
   loading=false,
 }) => {
   const [cart,setCart]=useState(()=>{try{return JSON.parse(localStorage.getItem("vv_cart")||"[]");}catch{return [];}});
@@ -2731,6 +2755,96 @@ const PortalShell = ({
 
   useEffect(()=>{localStorage.setItem("vv_cart",JSON.stringify(cart));},[cart]);
   useEffect(()=>{localStorage.setItem("vv_wishlist",JSON.stringify(wl));},[wl]);
+
+  // ── Live order status sync + real account data ────────────────────────────
+  // PREVIOUSLY: AccountDrawer listened on window.__vv_socket, but nothing in
+  // this file (or anywhere else, as far as this component knew) ever created
+  // that socket — so the listener was always a no-op and "Confirmed" status
+  // changes from staff never reached the customer without a manual refresh.
+  // ALSO PREVIOUSLY: the Overview/Orders/Rewards tabs always showed zeros,
+  // because nothing ever fetched this customer's own orders or a refreshed
+  // loyalty balance — the `user`/`orders` props are just whatever the parent
+  // app happened to pass in, and there was no backend route for a customer
+  // to pull their own data anyway (see /api/orders/my-orders and
+  // /api/customers/portal/me, added alongside this fix).
+  // FIX: open one socket connection here, keep a single liveOrders state that
+  // both OrderTracking (homepage) and AccountDrawer (account panel) read
+  // from, and self-fetch the customer's real orders + profile directly —
+  // so this works correctly even without any changes to the parent app.
+  const [liveOrders,setLiveOrders]=useState(orders);
+  const [myProfile,setMyProfile]=useState(null); // fresh {loyaltyPoints,tier,createdAt,...} from the backend
+  useEffect(()=>{ setLiveOrders(orders); },[orders]);
+
+  const applyStatusUpdate = useCallback((update)=>{
+    if(!update) return;
+    setLiveOrders(prev => prev.map(o =>
+      (o.id===update.orderId || o.orderNumber===update.orderNumber)
+        ? { ...o, orderStatus: update.status, status: update.status }
+        : o
+    ));
+  },[]);
+
+  // Pulls this customer's real order history + a refreshed loyalty balance.
+  // Safe to call even when logged out (it just no-ops) or if the token is
+  // missing/expired (fails silently — the UI just keeps showing prop data).
+  const fetchMyAccount = useCallback(async ()=>{
+    const token = localStorage.getItem("vv_portal_token");
+    if(!token) return;
+    try{
+      const [meRes,ordersRes] = await Promise.all([
+        fetch(`${BASE_API}/customers/portal/me`, { headers:{ Authorization:`Bearer ${token}` } }),
+        fetch(`${BASE_API}/orders/my-orders`,    { headers:{ Authorization:`Bearer ${token}` } }),
+      ]);
+      if(meRes.ok) setMyProfile(await meRes.json());
+      if(ordersRes.ok){ const d = await ordersRes.json(); setLiveOrders(d.orders||[]); }
+    }catch{ /* network hiccup — keep whatever data is already showing */ }
+  },[]);
+
+  useEffect(()=>{
+    // Reuse a single socket across the whole portal lifetime instead of one
+    // per drawer-open — also expose it on window so any other component
+    // (e.g. a future tracking page) can reuse the same connection.
+    let socket = window.__vv_socket;
+    if(!socket){
+      socket = io(SOCKET_URL, { transports:["websocket","polling"], withCredentials:true });
+      window.__vv_socket = socket;
+    }
+    socket.on("order:status-public", applyStatusUpdate);
+    socket.on("order:status-changed", applyStatusUpdate);
+
+    // Join this customer's private room so the targeted emit in
+    // routes/orders.js (io.to(`customer:${id}`).emit(...)) reaches this tab
+    // specifically, on top of the public broadcast everyone receives.
+    if(user?.id) socket.emit("join", `customer:${user.id}`);
+
+    // Pull real data immediately on login/mount
+    fetchMyAccount();
+
+    // ── Polling fallback ──────────────────────────────────────────────────
+    // Render's free tier can drop idle websocket connections (and sleep the
+    // whole service after inactivity), so the socket alone isn't fully
+    // reliable. Re-fetch every 45s and whenever the tab regains focus, as a
+    // safety net — plus call the parent's own refresh (e.g. for products)
+    // if one was supplied.
+    const refresh = ()=>{ fetchMyAccount(); if(typeof onRefreshOrders==="function") onRefreshOrders(); };
+    const interval = setInterval(refresh, 45000);
+    const onVisible = ()=>{ if(document.visibilityState==="visible") refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", refresh);
+
+    return ()=>{
+      socket.off("order:status-public", applyStatusUpdate);
+      socket.off("order:status-changed", applyStatusUpdate);
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", refresh);
+    };
+  },[applyStatusUpdate,onRefreshOrders,fetchMyAccount,user?.id]);
+
+  // Overlays the freshly-fetched profile (real loyaltyPoints/tier/createdAt)
+  // on top of whatever the parent passed in — falls back to the prop alone
+  // if the fetch hasn't completed yet or the customer is logged out.
+  const effectiveUser = user && myProfile ? { ...user, ...myProfile } : user;
 
   const addToCart=useCallback((p)=>{
     setCart(prev=>{
@@ -2824,7 +2938,7 @@ const PortalShell = ({
         <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}
           externalFilter={shopFilter} filterNonce={shopFilterNonce}/></div>
         <AboutSection/>
-        <OrderTracking orders={orders}/>
+        <OrderTracking orders={liveOrders}/>
         <LoyaltySection user={user} onJoinClick={()=>{setStaffMode(false);setLoginOpen(true);}}/>
         <Testimonials/>
         <Newsletter/>
@@ -2834,13 +2948,13 @@ const PortalShell = ({
       <AnimatePresence>{srchOpen&&<SearchOverlay open={srchOpen} onClose={()=>setSrchOpen(false)} products={products}/>}</AnimatePresence>
       <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart} onCheckout={()=>setCheckoutOpen(true)}/>
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
-      <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout}/>
+      <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={effectiveUser} orders={liveOrders} onLogout={onLogout}/>
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}
         onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}
         products={products} wishlist={wl} onWishlistToggle={toggleWl} onSelectProduct={setQvProd}/>
       <LoginModal open={loginOpen} onClose={()=>setLoginOpen(false)} onLogin={handleLogin} onStaffLogin={handleStaffLogin} initialMode={loginMode}/>
       <CheckoutModal open={checkoutOpen} onClose={()=>setCheckoutOpen(false)} cart={cart} user={user} onUpdateQty={updateQty} onRemove={removeFromCart}
-        onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); }}/>
+        onOrderPlaced={()=>{ setCart([]); localStorage.removeItem("vv_cart"); fetchMyAccount(); }}/>
       <WhatsAppFloat/>
       <ExitIntentBanner
         suppress={cartOpen||wlOpen||srchOpen||loginOpen||acctOpen||!!qvProd||checkoutOpen}
