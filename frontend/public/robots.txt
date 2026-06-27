@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Personal/session-specific pages with no SEO value — block from indexing
+Disallow: /cart
+Disallow: /checkout
+Disallow: /account
+Disallow: /dashboard
+Disallow: /login
+Disallow: /api/
+
+Sitemap: https://villavoguefashion.com/sitemap.xml

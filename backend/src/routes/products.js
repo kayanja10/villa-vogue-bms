@@ -138,7 +138,7 @@ router.get('/public', async (req, res) => {
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        select: { id: true, name: true, price: true, images: true, description: true, stock: true, isFeatured: true, tags: true, category: { select: { name: true } } },
+        select: { id: true, name: true, price: true, images: true, description: true, stock: true, isFeatured: true, tags: true, createdAt: true, updatedAt: true, category: { select: { name: true } } },
         skip: (parseInt(page) - 1) * parseInt(limit),
         take: parseInt(limit),
         orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
@@ -146,6 +146,35 @@ router.get('/public', async (req, res) => {
       prisma.product.count({ where }),
     ]);
     res.json({ products, total, page: parseInt(page), pages: Math.ceil(total / parseInt(limit)) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/products/public/:id — single product, no auth required.
+// Used by the standalone product detail page (/store/product/:id) so a
+// direct link, a search engine crawler, or a WhatsApp/Facebook link
+// preview can load just the one product instead of fetching the entire
+// catalog to find it client-side. Returns 404 (not 500) for inactive or
+// out-of-stock products, matching the same visibility rule as the list
+// endpoint above, so a sold-out item's old shared link cleanly 404s
+// rather than ever leaking data about an inactive product.
+router.get('/public/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'Invalid product id' });
+
+    const product = await prisma.product.findFirst({
+      where: { id, isActive: true },
+      select: {
+        id: true, name: true, price: true, costPrice: false, images: true,
+        description: true, stock: true, isFeatured: true, tags: true,
+        createdAt: true, updatedAt: true, sku: true,
+        category: { select: { id: true, name: true } },
+      },
+    });
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json(product);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

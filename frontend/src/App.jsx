@@ -22,6 +22,7 @@ import {
   UsersPage, SettingsPage,
 } from './pages/index.jsx';
 import CustomerPortal from './pages/CustomerPortal';
+import ProductPage from './pages/ProductPage';
 import { customers, products as productsApi } from './lib/api';
 import './index.css';
 
@@ -165,6 +166,11 @@ export default function App() {
         <Routes>
           {/* / — PUBLIC STORE FIRST. This is what every visitor sees by default. */}
           <Route path="/" element={<CustomerPortalWrapper />} />
+          {/* /store/product/:id — standalone, real, shareable product page.
+              Registered BEFORE the /store/* wildcard below so React Router
+              matches this specific path first rather than letting the
+              catch-all swallow it into the homepage modal experience. */}
+          <Route path="/store/product/:id" element={<ProductPage />} />
           {/* /store — kept as an alias so any previously shared /store links still work */}
           <Route path="/store/*" element={<CustomerPortalWrapper />} />
           {/* /track — public order tracking, no login required */}

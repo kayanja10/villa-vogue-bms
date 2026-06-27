@@ -48,6 +48,7 @@ export const auth = {
 export const products = {
   list:        (p)    => api.get('/products', { params: p }),
   listPublic:  (p)    => api.get('/products/public', { params: p }),
+  getPublicOne:(id)   => api.get(`/products/public/${id}`),
   get:         (id)   => api.get(`/products/${id}`),
   create:      (d)    => api.post('/products', d),
   update:      (id,d) => api.put(`/products/${id}`, d),
