@@ -489,7 +489,10 @@ const ProductCard = ({product:p,onAddToCart,onQuickView,onWishlistToggle,wishlis
         </div>
       </div>
       <div style={{padding:"14px 16px 18px"}}>
-        <p style={{fontSize:10,letterSpacing:".14em",textTransform:"uppercase",color:"var(--tm)",marginBottom:4,fontWeight:600}}>{p.category||"Fashion"}</p>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,gap:6}}>
+          <p style={{fontSize:10,letterSpacing:".14em",textTransform:"uppercase",color:"var(--tm)",fontWeight:600}}>{p.category||"Fashion"}</p>
+          <GenderBadge gender={p.gender}/>
+        </div>
         <h3 style={{fontFamily:"var(--fd)",fontSize:17,fontWeight:400,color:"var(--tp)",marginBottom:6,lineHeight:1.3}}>{p.name}</h3>
         <div style={{marginBottom:8}}><Stars r={p.rating||4.2} count={p.review_count}/></div>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -633,7 +636,10 @@ const QuickViewModal = ({product:p,open,onClose,onAddToCart,onOrderOnline,produc
               {/* ── Right: Product Details ── */}
               <div style={{padding:"22px 20px",display:"flex",flexDirection:"column",position:"relative",overflowY:"auto"}}>
                 <button onClick={onClose} style={{position:"absolute",top:14,right:14,background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:7,cursor:"pointer",color:"var(--ts)"}}><IC n="x" sz={15}/></button>
-                <p className="ll" style={{marginBottom:5}}>{p.category}</p>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                  <p className="ll" style={{margin:0}}>{p.category}</p>
+                  <GenderBadge gender={p.gender}/>
+                </div>
                 <h2 style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:400,lineHeight:1.2,marginBottom:8,paddingRight:28}}>{p.name}</h2>
                 <Stars r={p.rating||4.2} count={p.review_count||0} sz={14}/>
                 <div style={{margin:"10px 0",display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
@@ -1445,12 +1451,45 @@ const normalizeProduct = (p) => {
   const primary = imgs.find(i => i.isPrimary) || imgs[0];
   return {
     ...p,
+    gender: normalizeGender(p.gender),
     stock_quantity: p.stock_quantity ?? p.stock ?? 0,
     image_url: p.image_url || primary?.url || null,
     _allImages: imgs,
     category: typeof p.category === "object" && p.category !== null ? p.category.name || "" : (p.category || ""),
     brand:    typeof p.brand    === "object" && p.brand    !== null ? p.brand.name    || "" : (p.brand    || ""),
   };
+};
+
+// ── Gender / Department badge ────────────────────────────────────────────────
+// Matches the same 5 buttons staff pick from in Inventory → Add/Edit Product
+// (men / women / unisex / kids / babies). Accepts a few raw spellings so this
+// keeps working even if the backend sends "Women's" or "KIDS" etc.
+const GENDER_OPTIONS = [
+  { v: "men",    l: "Men",    e: "♂" },
+  { v: "women",  l: "Women",  e: "♀" },
+  { v: "unisex", l: "Unisex", e: "⚥" },
+  { v: "kids",   l: "Kids",   e: "🧒" },
+  { v: "babies", l: "Babies", e: "👶" },
+];
+const normalizeGender = (raw) => {
+  if (!raw) return null;
+  const s = String(raw).toLowerCase().trim();
+  if (s.startsWith("wom")) return "women";
+  if (s.startsWith("men") || s === "male") return "men";
+  if (s.startsWith("uni")) return "unisex";
+  if (s.startsWith("kid") || s.startsWith("child")) return "kids";
+  if (s.startsWith("bab") || s.startsWith("infant")) return "babies";
+  return GENDER_OPTIONS.some(g => g.v === s) ? s : null;
+};
+const GenderBadge = ({gender,style}) => {
+  const g = GENDER_OPTIONS.find(o => o.v === normalizeGender(gender));
+  if (!g) return null;
+  return (
+    <span style={{fontSize:9.5,letterSpacing:".08em",textTransform:"uppercase",fontWeight:700,color:"var(--gold)",
+      border:"1px solid var(--gold)",borderRadius:50,padding:"2px 8px",display:"inline-flex",alignItems:"center",gap:3,...style}}>
+      {g.e} {g.l}
+    </span>
+  );
 };
 
 // ── New Arrival badge: configurable window (days) ───────────────────────────
@@ -1636,6 +1675,7 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
   const [visible, setVisible] = useState(PRODUCTS_PER_PAGE);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState("All");
+  const [activeGender, setActiveGender] = useState("All");
   // "quick" is either null, "new" (New Arrivals) or "sale" (Sale) — applied
   // on top of the category filter. Category-name filters (Wedding, etc.)
   // just set activeCategory directly below.
@@ -1658,13 +1698,16 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
 
   // Build category list from real products
   const categories = ["All", ...Array.from(new Set(dp.map(p => p.category).filter(Boolean)))];
+  // Build gender list from real products — only show options that actually exist
+  const gendersPresent = GENDER_OPTIONS.filter(g => dp.some(p => p.gender === g.v));
 
-  // Filter by search + category + quick filter
+  // Filter by search + category + gender + quick filter
   const filtered = dp.filter(p => {
     const matchCat = activeCategory === "All" || p.category === activeCategory;
+    const matchGender = activeGender === "All" || p.gender === activeGender;
     const matchSearch = !search || p.name?.toLowerCase().includes(search.toLowerCase()) || p.category?.toLowerCase().includes(search.toLowerCase());
     const matchQuick = quick === "new" ? isNewArrival(p) : quick === "sale" ? !!p.is_sale : true;
-    return matchCat && matchSearch && matchQuick;
+    return matchCat && matchGender && matchSearch && matchQuick;
   });
 
   const shown = filtered.slice(0, visible);
@@ -1714,6 +1757,27 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
                       background:activeCategory===cat?"linear-gradient(135deg,var(--gold-d),var(--gold))":"var(--ib)",
                       color:activeCategory===cat?"#000":"var(--ts)"}}>
                     {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Gender / department pills */}
+            {gendersPresent.length > 0 && (
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={()=>{setActiveGender("All");setVisible(PRODUCTS_PER_PAGE);}}
+                  style={{padding:"6px 16px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all .2s",border:"1.5px solid",
+                    borderColor:activeGender==="All"?"var(--gold)":"var(--br)",
+                    background:activeGender==="All"?"linear-gradient(135deg,var(--gold-d),var(--gold))":"var(--ib)",
+                    color:activeGender==="All"?"#000":"var(--ts)"}}>
+                  All
+                </button>
+                {gendersPresent.map(g=>(
+                  <button key={g.v} onClick={()=>{setActiveGender(g.v);setVisible(PRODUCTS_PER_PAGE);}}
+                    style={{padding:"6px 16px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",transition:"all .2s",border:"1.5px solid",
+                      borderColor:activeGender===g.v?"var(--gold)":"var(--br)",
+                      background:activeGender===g.v?"linear-gradient(135deg,var(--gold-d),var(--gold))":"var(--ib)",
+                      color:activeGender===g.v?"#000":"var(--ts)"}}>
+                    {g.e} {g.l}
                   </button>
                 ))}
               </div>

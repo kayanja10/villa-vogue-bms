@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import { io } from 'socket.io-client';
 import { useStore } from './store/useStore';
 import { useSocket } from './hooks/useSocket';
 import { useSessionManager } from './hooks/useSessionManager';
@@ -92,6 +93,41 @@ function CustomerPortalWrapper() {
       .then(d => setPortalOrders(d?.orders || d?.data || (Array.isArray(d) ? d : [])))
       .catch(() => setPortalOrders([]));
   }, [portalUser]);
+
+  // ── Real-time order status sync ─────────────────────────────────────────────
+  // The staff-only `useSocket()` hook (see SessionInit) connects gated behind
+  // a staff login, so it never fires for an anonymous storefront visitor. The
+  // customer portal needs its own connection so that when staff change an
+  // order's status (or set the delivery fee) in the BMS, the change shows up
+  // here immediately instead of only after the customer refreshes the page.
+  // window.__vv_socket is kept for backward compatibility — CustomerPortal's
+  // own AccountDrawer already listens on this same global for its local copy.
+  useEffect(() => {
+    const socket = io(BASE.replace(/\/api\/?$/, ''), { transports: ['websocket', 'polling'] });
+    window.__vv_socket = socket;
+
+    const applyStatusUpdate = (update) => {
+      setPortalOrders(prev => prev.map(o =>
+        (o.id === update.orderId || o.orderNumber === update.orderNumber)
+          ? {
+              ...o,
+              orderStatus: update.status ?? o.orderStatus,
+              ...(update.deliveryFee != null ? { deliveryFee: update.deliveryFee } : {}),
+              ...(update.total != null ? { total: update.total } : {}),
+            }
+          : o
+      ));
+    };
+    socket.on('order:status-public', applyStatusUpdate);
+    socket.on('order:status-changed', applyStatusUpdate);
+
+    return () => {
+      socket.off('order:status-public', applyStatusUpdate);
+      socket.off('order:status-changed', applyStatusUpdate);
+      socket.disconnect();
+      if (window.__vv_socket === socket) window.__vv_socket = null;
+    };
+  }, []);
 
   // ── Customer login ──────────────────────────────────────────────────────────
   const handleLogin = useCallback(async (creds) => {

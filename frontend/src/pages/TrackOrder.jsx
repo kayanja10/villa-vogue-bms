@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { io } from 'socket.io-client';
 
 const BASE_API = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
 
@@ -40,6 +41,36 @@ export default function TrackOrder() {
   };
 
   const info = order ? (STATUS_INFO[order.orderStatus] || STATUS_INFO.pending) : null;
+
+  // ── Live status sync ─────────────────────────────────────────────────────
+  // Once an order is found, stay subscribed so a staff update (status change,
+  // delivery fee set, etc.) appears here immediately — the customer doesn't
+  // need to hit "Track" again to see the latest state.
+  const orderNumberRef = useRef(null);
+  useEffect(() => { orderNumberRef.current = order?.orderNumber || null; }, [order?.orderNumber]);
+
+  useEffect(() => {
+    if (!order?.orderNumber) return;
+    const socket = io(BASE_API.replace(/\/api\/?$/, ''), { transports: ['websocket', 'polling'] });
+
+    const applyStatusUpdate = (update) => {
+      if (update.orderNumber !== orderNumberRef.current && update.orderId !== order.id) return;
+      setOrder(prev => prev ? {
+        ...prev,
+        orderStatus: update.status ?? prev.orderStatus,
+        ...(update.deliveryFee != null ? { deliveryFee: update.deliveryFee } : {}),
+        ...(update.total != null ? { total: update.total } : {}),
+      } : prev);
+    };
+    socket.on('order:status-public', applyStatusUpdate);
+    socket.on('order:status-changed', applyStatusUpdate);
+
+    return () => {
+      socket.off('order:status-public', applyStatusUpdate);
+      socket.off('order:status-changed', applyStatusUpdate);
+      socket.disconnect();
+    };
+  }, [order?.orderNumber]);
 
   return (
     <div style={{
@@ -169,6 +200,13 @@ export default function TrackOrder() {
               <div style={{ borderTop: "1px solid rgba(255,255,255,.08)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 10 }}>
                 <Row label="Items" value={`${order.itemCount} item${order.itemCount !== 1 ? "s" : ""}`} />
                 <Row label="Total" value={`UGX ${Number(order.total).toLocaleString()}`} gold />
+                {(order.deliveryType === "delivery" || order.deliveryArea) && (
+                  <Row label="Delivery Fee" value={
+                    typeof order.deliveryFee === "number" && order.deliveryFee > 0
+                      ? `UGX ${order.deliveryFee.toLocaleString()}`
+                      : "To be confirmed"
+                  } />
+                )}
                 <Row label="Payment" value={order.paymentStatus === "paid" ? "✓ Paid" : "Pending"} />
                 <Row label="Payment Method" value={order.paymentMethod?.replace(/_/g, " ")} />
                 <Row label="Ordered" value={new Date(order.createdAt).toLocaleDateString("en-UG", { day: "numeric", month: "short", year: "numeric" })} />

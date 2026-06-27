@@ -1,8 +1,62 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus, Search, Edit2, Trash2, AlertTriangle, Upload, X, ChevronLeft, ChevronRight, Star, Image as ImageIcon, GripVertical, Eye } from 'lucide-react';
+import { Package, Plus, Search, Edit2, Trash2, AlertTriangle, Upload, X, ChevronLeft, ChevronRight, Star, Image as ImageIcon, GripVertical, Eye, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { products as productsApi, categories, suppliers, uploads } from '../lib/api';
+import Barcode from '../components/Barcode';
+
+// ── Gender / Department options ──────────────────────────────────────────────
+// Mirrors GENDER_OPTIONS in CustomerPortal.jsx — keep both lists in sync if
+// you ever add/rename an option, since the customer-facing badge/filter reads
+// the same value strings ("men" | "women" | "unisex" | "kids" | "babies").
+const GENDER_OPTIONS = [
+  { v: 'men',    l: 'Men',    e: '♂' },
+  { v: 'women',  l: 'Women',  e: '♀' },
+  { v: 'unisex', l: 'Unisex', e: '⚥' },
+  { v: 'kids',   l: 'Kids',   e: '🧒' },
+  { v: 'babies', l: 'Babies', e: '👶' },
+];
+
+// ── SKU generator ─────────────────────────────────────────────────────────────
+// Was previously just an empty text field staff had to fill in by hand, which
+// is how duplicate/blank SKUs were slipping through. This produces a fresh,
+// readable code: VV-<CATEGORY>-<GENDER>-<random>. The random segment is 6
+// independently-drawn base36 characters (~31 bits, ~2.1 billion combos) — an
+// earlier version mixed in Date.now(), but that barely changes across calls
+// made in quick succession (e.g. double-clicking "Generate") and a trailing
+// .slice() was keeping mostly that near-constant timestamp and only 1 real
+// random character, so rapid clicks were producing duplicate SKUs.
+function generateSKU({ categoryName, gender } = {}) {
+  const catPart = (categoryName || 'GEN').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'GEN';
+  const genderPart = gender ? gender.slice(0, 2).toUpperCase() : '';
+  const rand = Array.from({ length: 6 }, () => Math.floor(Math.random() * 36).toString(36)).join('').toUpperCase();
+  return ['VV', catPart, genderPart, rand].filter(Boolean).join('-');
+}
+
+// ── EAN-13 barcode generator ──────────────────────────────────────────────────
+// Real EAN-13 codes need a correct trailing check digit or scanners reject
+// them — the old field just let staff type any digits, so a "barcode" could
+// look fine in the UI but fail to scan in real life. This generates 12 base
+// digits (prefixed "20", the GS1 range officially reserved for in-store /
+// internal-use products — never collides with a real retail-assigned code)
+// then computes the correct 13th check digit.
+function generateBarcode() {
+  let base = '20'; // internal-use prefix (GS1 restricted circulation range 20-29)
+  for (let i = 0; i < 10; i++) base += Math.floor(Math.random() * 10);
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const d = parseInt(base[i], 10);
+    sum += (i % 2 === 0) ? d : d * 3;
+  }
+  const check = (10 - (sum % 10)) % 10;
+  return base + check;
+}
+function isValidEAN13(code) {
+  if (!/^\d{13}$/.test(code)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += (i % 2 === 0) ? +code[i] : +code[i] * 3;
+  return (10 - (sum % 10)) % 10 === +code[12];
+}
 
 // ── Multi-Image Uploader ──────────────────────────────────────────────────────
 const IMAGE_LABELS = ['Front', 'Back', 'Side', 'Detail', 'Color Alt', 'On Model', 'Packaging', 'Other'];
@@ -209,8 +263,9 @@ function ProductModal({ product, onClose, categories: cats = [], suppliers: sups
 
   const [form, setForm] = useState({
     name: product?.name || '',
-    sku: product?.sku || '',
-    barcode: product?.barcode || '',
+    sku: product?.sku || (isEdit ? '' : generateSKU({})),
+    barcode: product?.barcode || (isEdit ? '' : generateBarcode()),
+    gender: product?.gender || '',
     categoryId: product?.categoryId || '',
     price: product?.price || '',
     costPrice: product?.costPrice || '',
@@ -240,14 +295,21 @@ function ProductModal({ product, onClose, categories: cats = [], suppliers: sups
 
   const submit = () => {
     if (!form.name || !form.price) { toast.error('Name and price are required'); return; }
+    if (form.barcode && !isValidEAN13(form.barcode)) {
+      toast.error('Barcode must be exactly 13 digits with a valid check digit — click "Generate New" or clear it');
+      return;
+    }
     // Serialize images: store full objects so labels/primary info is preserved
     const imageData = images.map(img => ({
       url: img.url,
       label: img.label || 'Front',
       isPrimary: img.isPrimary || false,
     }));
+    const catName = cats.find(c => String(c.id) === String(form.categoryId))?.name;
     mutation.mutate({
       ...form,
+      sku: form.sku || generateSKU({ categoryName: catName, gender: form.gender }), // never save blank
+      gender: form.gender || null,
       price: parseFloat(form.price),
       costPrice: parseFloat(form.costPrice || 0),
       stock: parseInt(form.stock || 0),
@@ -305,12 +367,52 @@ function ProductModal({ product, onClose, categories: cats = [], suppliers: sups
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="label">SKU</label>
-                  <input className="input" value={form.sku} onChange={e => fi('sku', e.target.value)} placeholder="VV-001" />
+                  <div className="flex gap-2">
+                    <input className="input flex-1" value={form.sku} onChange={e => fi('sku', e.target.value)} placeholder="VV-001" />
+                    <button type="button" title="Generate new SKU"
+                      onClick={() => fi('sku', generateSKU({ categoryName: cats.find(c => String(c.id) === String(form.categoryId))?.name, gender: form.gender }))}
+                      className="px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-[#C9A96E] hover:border-[#C9A96E] transition-colors">
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="label">Barcode</label>
-                  <input className="input" value={form.barcode} onChange={e => fi('barcode', e.target.value)} placeholder="Optional" />
+                  <div className="flex gap-2">
+                    <input className="input flex-1" value={form.barcode} onChange={e => fi('barcode', e.target.value.replace(/\D/g, '').slice(0, 13))}
+                      placeholder="Optional — 13 digits" inputMode="numeric" />
+                    <button type="button" title="Generate new barcode"
+                      onClick={() => fi('barcode', generateBarcode())}
+                      className="px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-[#C9A96E] hover:border-[#C9A96E] transition-colors">
+                      <RefreshCw size={14} />
+                    </button>
+                  </div>
+                  {form.barcode && (
+                    isValidEAN13(form.barcode) ? (
+                      <div className="mt-2 flex justify-center bg-white rounded-lg p-2 border border-gray-100">
+                        <Barcode value={form.barcode} width={180} height={56} />
+                      </div>
+                    ) : (
+                      <p className="text-xs text-red-500 mt-1.5">⚠ Not a valid 13-digit barcode yet — click ⟳ to generate a working one</p>
+                    )
+                  )}
                 </div>
+              </div>
+              <div>
+                <label className="label">Department</label>
+                <div className="flex gap-2 flex-wrap">
+                  {GENDER_OPTIONS.map(g => (
+                    <button key={g.v} type="button" onClick={() => fi('gender', form.gender === g.v ? '' : g.v)}
+                      className={`px-3.5 py-2 rounded-xl text-sm font-medium border-2 transition-colors flex items-center gap-1.5 ${
+                        form.gender === g.v
+                          ? 'border-[#C9A96E] bg-[#C9A96E]/10 text-[#A8824A]'
+                          : 'border-gray-200 dark:border-gray-700 text-gray-500 hover:border-[#C9A96E]/50'
+                      }`}>
+                      <span>{g.e}</span> {g.l}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-gray-400 mt-1.5">Shown as a badge on the customer portal and usable as a shop filter</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -401,6 +503,7 @@ function ProductModal({ product, onClose, categories: cats = [], suppliers: sups
                     { l: 'Selling Price', v: form.price ? `UGX ${Number(form.price).toLocaleString()}` : '—' },
                     { l: 'Margin', v: margin ? `${margin}%` : '—' },
                     { l: 'Category', v: cats.find(c => String(c.id) === String(form.categoryId))?.name || '—' },
+                    { l: 'Department', v: GENDER_OPTIONS.find(g => g.v === form.gender)?.l || '—' },
                   ].map(r => (
                     <div key={r.l} className="flex justify-between text-sm">
                       <span className="text-gray-500">{r.l}</span>
@@ -527,7 +630,14 @@ export default function Inventory() {
                       {imgCount > 0 && <p className="text-[10px] text-[#C9A96E] mt-0.5">{imgCount} photo{imgCount > 1 ? 's' : ''}</p>}
                     </div>
                   </td>
-                  <td className="table-cell"><span className="badge-gray text-xs">{p.category?.name || '—'}</span></td>
+                  <td className="table-cell">
+                    <span className="badge-gray text-xs">{p.category?.name || '—'}</span>
+                    {p.gender && (
+                      <span className="badge-gray text-xs ml-1">
+                        {GENDER_OPTIONS.find(g => g.v === p.gender)?.e} {GENDER_OPTIONS.find(g => g.v === p.gender)?.l || p.gender}
+                      </span>
+                    )}
+                  </td>
                   <td className="table-cell font-semibold text-sm">UGX {Number(p.price).toLocaleString()}</td>
                   <td className="table-cell text-sm text-gray-500">UGX {Number(p.costPrice || 0).toLocaleString()}</td>
                   <td className="table-cell">
