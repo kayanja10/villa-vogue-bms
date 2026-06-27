@@ -103,7 +103,7 @@ const useToast = () => useContext(ToastCtx);
       .lucky-code{border:1.5px dashed var(--gold);border-radius:12px;padding:12px 18px;font-family:var(--fd);font-size:22px;letter-spacing:.1em;color:var(--gold);font-weight:600;display:inline-block;margin:14px 0}
       @media(max-width:480px){.exit-banner{padding:28px 20px 22px}}
       @media(max-width:900px){.dn{display:none!important}}
-      @media(max-width:768px){.mm{min-width:calc(100vw - 32px)}.vd{width:100vw}.vm>div{grid-template-columns:1fr!important}}
+      @media(max-width:768px){.mm{min-width:calc(100vw - 32px)}.vd{width:100vw}.vm>div{grid-template-columns:1fr!important}.abt-g{grid-template-columns:1fr!important;gap:32px!important}.abt-g>div:first-child{max-width:380px;margin:0 auto}}
     `;
   document.head.appendChild(s);
 })();
@@ -826,14 +826,17 @@ const BASE_API = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrend
 
 // Major towns, cities, and Kampala suburbs across Uganda — alphabetically sorted, "Other" always last
 const UGANDA_AREAS = [
-  "Arua","Bugiri","Bushenyi","Busia","Entebbe","Fort Portal","Gulu","Hoima",
-  "Iganga","Ishaka","Jinja","Kabale","Kabarole","Kampala (City Centre)",
-  "Kamuli","Kasese","Kayunga","Kitgum","Kololo","Kyengera","Lira","Luweero",
+  "Arua","Bugiri","Bushenyi","Busia","Bweyogerere","Entebbe","Fort Portal","Gayaza","Gulu","Hoima",
+  "Iganga","Ishaka","Jinja","Kabale","Kabarole","Kajjansi","Kampala (City Centre)",
+  "Kamuli","Kasangati","Kasese","Kayunga","Kira","Kitende","Kitgum","Kololo","Kyaliwajjala","Kyengera","Lira","Luweero",
   "Lyantonde","Masaka","Masindi","Mbale","Mbarara","Mityana","Mpigi",
-  "Mubende","Mukono","Nakawa","Nakasero","Namugongo","Nansana","Njeru",
+  "Mubende","Mukono","Najjera","Nakawa","Nakasero","Namasuba","Namugongo","Nansana","Njeru",
   "Ntinda","Ntungamo","Pader","Rukungiri","Soroti","Tororo","Wakiso",
   "Other (specify below)",
 ];
+
+// Most-requested delivery zones — surfaced as tappable quick-pick chips at checkout
+const POPULAR_AREAS = ["Kampala (City Centre)","Wakiso","Kasangati","Entebbe","Kira","Najjera"];
 
 const STEPS = ["Cart Review","Your Details","Payment","Confirm"];
 
@@ -855,8 +858,11 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
   });
 
   const total = cart.reduce((a,i)=>a+Number(i.price)*i.qty,0);
-  const deliveryFee = form.delivery==="delivery" ? 10000 : 0;
-  const grandTotal = total + deliveryFee;
+  // Delivery fee is NOT collected at checkout — our team sets it based on the
+  // customer's exact location after the order comes in, and it then shows up
+  // on the customer's Order Status (see AccountDrawer "orders" tab below).
+  const deliveryFee = null;
+  const grandTotal = total;
   const waMsg = buildWhatsAppCartMsg(cart, grandTotal);
 
   // Reset when closed
@@ -1004,7 +1010,7 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                   <div>
                     <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:8}}>Delivery Option <span style={{color:"var(--gold)"}}>*</span></label>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-                      {[{v:"pickup",l:"🏪 In-Store Pickup",d:"Free · Ready in 1hr"},{v:"delivery",l:"🚚 Home Delivery",d:"UGX 10,000 · 1-2 days"}].map(opt=>(
+                      {[{v:"pickup",l:"🏪 In-Store Pickup",d:"Free · Ready in 1hr"},{v:"delivery",l:"🚚 Home Delivery",d:"Instant dispatch · Fee confirmed by our team"}].map(opt=>(
                         <button key={opt.v} onClick={()=>setForm(f=>({...f,delivery:opt.v}))}
                           style={{padding:"12px",borderRadius:12,background:form.delivery===opt.v?"rgba(201,168,76,.12)":"var(--ib)",border:`2px solid ${form.delivery===opt.v?"var(--gold)":"var(--br)"}`,cursor:"pointer",textAlign:"left",transition:"all .2s"}}>
                           <p style={{fontSize:13,fontWeight:600,color:"var(--tp)",marginBottom:3}}>{opt.l}</p>
@@ -1015,6 +1021,22 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                   </div>
                   {form.delivery==="delivery"&&(
                     <>
+                      <div>
+                        <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:8}}>
+                          📍 Popular Delivery Areas
+                        </label>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:14}}>
+                          {POPULAR_AREAS.map(a=>(
+                            <button key={a} type="button" onClick={()=>setForm(f=>({...f,area:a}))}
+                              style={{padding:"7px 13px",borderRadius:50,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",
+                                background:form.area===a?"rgba(201,168,76,.15)":"var(--ib)",
+                                border:`1.5px solid ${form.area===a?"var(--gold)":"var(--br)"}`,
+                                color:form.area===a?"var(--gold)":"var(--tp)"}}>
+                              {a}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                       <div>
                         <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>
                           Delivery Area <span style={{color:"var(--gold)"}}>*</span>
@@ -1031,6 +1053,12 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                         form.area==="Other (specify below)" ? "e.g. Plot 12, Main Street, Town" : "e.g. Near Total Petrol Station",
                         form.area==="Other (specify below)"
                       )}
+                      <div style={{background:"rgba(201,168,76,.08)",border:"1px solid rgba(201,168,76,.3)",borderRadius:12,padding:"11px 14px",display:"flex",gap:9,alignItems:"flex-start"}}>
+                        <span style={{fontSize:15,flexShrink:0}}>📦</span>
+                        <p style={{fontSize:11.5,color:"var(--ts)",lineHeight:1.6}}>
+                          We dispatch right away — your delivery fee is set by our team based on your exact location and isn't charged in this checkout. It'll show up on your <strong>Order Status</strong> (Account → Orders) as soon as it's set.
+                        </p>
+                      </div>
                     </>
                   )}
                   <div>
@@ -1081,6 +1109,7 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                           ? "Send UGX "+grandTotal.toLocaleString()+" to MTN MoMo: 0782860372 (Villa Vogue)"
                           : "Send UGX "+grandTotal.toLocaleString()+" to Airtel: 0782860372 (Villa Vogue)"}
                         <br/>Use your name + order number as reference after placing.
+                        {form.delivery==="delivery"&&<><br/><span style={{color:"var(--gold)"}}>Note:</span> this covers items only — your delivery fee will be confirmed separately and shown on your order status.</>}
                       </p>
                       {inp("Your MoMo/Airtel Number","momoNumber","tel","07XX XXX XXX")}
                     </div>
@@ -1089,7 +1118,7 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                   <div style={{background:"var(--bc)",border:"1px solid var(--br)",borderRadius:12,padding:"14px 16px"}}>
                     <p style={{fontSize:11,fontWeight:700,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",marginBottom:10}}>Order Summary</p>
                     {cart.map(i=><div key={i.id} style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--ts)"}}>{i.name} x{i.qty}</span><span style={{fontWeight:600}}>UGX {(Number(i.price)*i.qty).toLocaleString()}</span></div>)}
-                    {deliveryFee>0&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--ts)"}}>Delivery</span><span>UGX {deliveryFee.toLocaleString()}</span></div>}
+                    {form.delivery==="delivery"&&<div style={{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:12}}><span style={{color:"var(--ts)"}}>Delivery</span><span style={{fontStyle:"italic",color:"var(--tm)"}}>To be confirmed</span></div>}
                     <div style={{display:"flex",justifyContent:"space-between",paddingTop:10,borderTop:"1px solid var(--br)"}}><span style={{fontWeight:700}}>Total</span><span style={{fontFamily:"var(--fd)",fontSize:17,color:"var(--gold)",fontWeight:500}}>UGX {grandTotal.toLocaleString()}</span></div>
                   </div>
                   <div style={{display:"flex",gap:10}}>
@@ -1126,7 +1155,8 @@ const CheckoutModal = ({open,onClose,cart,user,onOrderPlaced,onUpdateQty,onRemov
                     {[
                       {e:"📞",t:"We'll call/WhatsApp you within 30 minutes to confirm"},
                       {e:"💳",t:form.payment!=="cash"?"Complete your MoMo/Airtel payment using the reference above":"Have cash ready for "+( form.delivery==="delivery"?"delivery":"pickup")},
-                      {e:form.delivery==="delivery"?"🚚":"🏪",t:form.delivery==="delivery"?`We'll deliver to ${form.area}${form.address?" — "+form.address:""} within 1-2 days`:"Your order will be ready for pickup in about 1 hour"},
+                      {e:form.delivery==="delivery"?"🚚":"🏪",t:form.delivery==="delivery"?`We're dispatching your order to ${form.area}${form.address?" — "+form.address:""} right away`:"Your order will be ready for pickup in about 1 hour"},
+                      ...(form.delivery==="delivery"?[{e:"💰",t:"Our team will set your delivery fee based on your location — track it under Account → Orders"}]:[]),
                     ].map((s,i)=>(
                       <div key={i} style={{display:"flex",gap:10,marginBottom:10}}>
                         <span style={{fontSize:18,flexShrink:0}}>{s.e}</span>
@@ -1312,7 +1342,7 @@ const AboutSection = () => (
   <section style={{padding:"80px 0",background:"var(--bp)"}}>
     <div style={{maxWidth:1100,margin:"0 auto",padding:"0 24px"}}>
       <Reveal>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:56,alignItems:"center",flexWrap:"wrap"}}>
+        <div className="abt-g" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:56,alignItems:"center"}}>
           {/* Founder photo */}
           <div style={{position:"relative"}}>
             <div style={{borderRadius:24,overflow:"hidden",aspectRatio:"3/4",background:"var(--bt)",maxHeight:520}}>
@@ -1965,6 +1995,7 @@ const Footer = ({onLinkClick}) => (
           <div style={{fontFamily:"var(--fd)",fontSize:20,fontWeight:300,letterSpacing:".2em",marginBottom:5}}>VILLA VOGUE</div>
           <div style={{fontSize:9,letterSpacing:".3em",color:"var(--gold)",textTransform:"uppercase",marginBottom:18}}>Luxury Fashion Uganda</div>
           <p style={{fontSize:13,color:"var(--tm)",lineHeight:1.8}}>Premium fashion for the modern Ugandan lifestyle. Crafted with elegance, delivered with care.</p>
+          <p style={{fontSize:12,color:"var(--gold)",lineHeight:1.7,marginTop:10}}>🚚 Instant dispatch to Kampala, Wakiso, Kasangati, Entebbe &amp; more</p>
           <a href="https://wa.me/256782860372" target="_blank" rel="noopener noreferrer"
             style={{display:"inline-flex",alignItems:"center",gap:7,marginTop:18,padding:"9px 16px",background:"#25D366",color:"#fff",borderRadius:50,textDecoration:"none",fontSize:12,fontWeight:600}}>
             <IC n="wa" sz={14} c="#fff"/> Chat on WhatsApp
@@ -2055,7 +2086,12 @@ const INFO_CONTENT = {
   },
   shipping: {
     title: "Shipping Info",
-    body: <p>We deliver across Uganda. Delivery time and cost depend on your location and will be confirmed with you on WhatsApp or at checkout before your order is dispatched.</p>,
+    body: (
+      <>
+        <p style={{marginBottom:12}}>We dispatch every order right away — no waiting around. We deliver across Uganda, with fastest turnaround in <strong>Kampala, Wakiso, Kasangati, Entebbe</strong> and surrounding areas (Kira, Najjera, Gayaza and more).</p>
+        <p>Your delivery fee depends on your exact location, so it's not charged at checkout — our team sets it once your order comes in, and it shows up automatically on your <strong>Order Status</strong> (Account → Orders). We'll also confirm everything with you on WhatsApp.</p>
+      </>
+    ),
   },
   faq: {
     title: "Frequently Asked Questions",
@@ -2066,7 +2102,9 @@ const INFO_CONTENT = {
         <p style={{fontWeight:600,marginBottom:4}}>What payment methods do you accept?</p>
         <p style={{marginBottom:14}}>Mobile Money and other options confirmed at checkout.</p>
         <p style={{fontWeight:600,marginBottom:4}}>Can I track my order?</p>
-        <p>Yes — use the Track Order link in the footer.</p>
+        <p style={{marginBottom:14}}>Yes — use the Track Order link in the footer.</p>
+        <p style={{fontWeight:600,marginBottom:4}}>How much is delivery, and how fast?</p>
+        <p>We dispatch instantly. Your delivery fee depends on your location and is set by our team after you order — you'll see it reflected on your Order Status.</p>
       </>
     ),
   },
@@ -2392,7 +2430,7 @@ const ReviewForm = ({orders=[],userName=""}) => {
   );
 };
 
-const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
+const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) => {
   // Local copy of orders that can be live-updated via socket when staff changes status —
   // without this, the customer would need to close/reopen the drawer to see updates
   const [liveOrders,setLiveOrders] = useState(orders);
@@ -2405,7 +2443,11 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
     const handler = (update) => {
       setLiveOrders(prev => prev.map(o =>
         (o.id===update.orderId || o.orderNumber===update.orderNumber)
-          ? { ...o, orderStatus: update.status }
+          ? { ...o,
+              orderStatus: update.status ?? o.orderStatus,
+              ...(update.deliveryFee!=null?{deliveryFee:update.deliveryFee}:{}),
+              ...(update.total!=null?{total:update.total}:{}),
+            }
           : o
       ));
     };
@@ -2418,6 +2460,27 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
   },[]);
 
   const [tab,setTab]=useState("overview");
+  const toast = useToast();
+  const [settingsForm,setSettingsForm]=useState({name:user?.name||"",email:user?.email||"",phone:user?.phone||""});
+  const [savingProfile,setSavingProfile]=useState(false);
+  // Keep the Settings fields in sync whenever the logged-in user changes
+  useEffect(()=>{ setSettingsForm({name:user?.name||"",email:user?.email||"",phone:user?.phone||""}); },[user]);
+  const handleSaveProfile = async () => {
+    if(!settingsForm.name||!settingsForm.phone){toast("Name and phone are required","err","⚠");return;}
+    setSavingProfile(true);
+    try{
+      if(onUpdateProfile){
+        await onUpdateProfile(settingsForm);
+        toast("Profile updated","ok","✓");
+      } else {
+        toast("Profile updates aren't connected yet — contact us on WhatsApp for now","err","⚠");
+      }
+    } catch(e) {
+      toast(e.message||"Could not update profile","err","⚠");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
   const tabs=[
     {k:"overview",l:"Overview",i:"user"},{k:"orders",l:"Orders",i:"pkg"},
     {k:"loyalty",l:"Rewards",i:"award"},{k:"reviews",l:"Reviews",i:"star"},{k:"settings",l:"Settings",i:"cog"},
@@ -2527,6 +2590,11 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
                         </div>
                         <p style={{fontSize:11,color:"var(--tm)",marginBottom:4}}>{o.createdAt?new Date(o.createdAt).toLocaleDateString("en-UG",{day:"numeric",month:"short",year:"numeric"}):"—"}</p>
                         <p style={{fontSize:14,color:"var(--gold)",fontWeight:700,marginBottom:2}}>UGX {Number(o.total||o.totalAmount||0).toLocaleString()}</p>
+                        {(o.deliveryType==="delivery"||o.deliveryArea)&&(
+                          typeof o.deliveryFee==="number"&&o.deliveryFee>0
+                            ?<p style={{fontSize:11,color:"var(--tm)",marginBottom:2}}>🚚 Delivery fee: <span style={{color:"var(--gold)",fontWeight:600}}>UGX {o.deliveryFee.toLocaleString()}</span></p>
+                            :<p style={{fontSize:11,color:"var(--tm)",marginBottom:2}}>🚚 Delivery fee: <span style={{fontStyle:"italic"}}>to be confirmed by our team</span></p>
+                        )}
                         <OrderStatusStepper status={o.orderStatus||o.status||"pending"}/>
                       </div>
                     ))}
@@ -2563,14 +2631,14 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout}) => {
                   <motion.div key="settings" initial={{opacity:0,x:10}} animate={{opacity:1,x:0}} exit={{opacity:0,x:-10}} transition={{duration:.2}}>
                     <p className="ll" style={{marginBottom:16}}>Profile Settings</p>
                     <div style={{display:"flex",flexDirection:"column",gap:13}}>
-                      {[{l:"Full Name",f:"name",v:user?.name||""},{l:"Email Address",f:"email",v:user?.email||""},{l:"Phone Number",f:"phone",v:user?.phone||""}].map(f=>(
+                      {[{l:"Full Name",f:"name"},{l:"Email Address",f:"email"},{l:"Phone Number",f:"phone"}].map(f=>(
                         <div key={f.l}>
                           <label style={{fontSize:11,fontWeight:600,letterSpacing:".08em",textTransform:"uppercase",color:"var(--tm)",display:"block",marginBottom:6}}>{f.l}</label>
-                          <input className="vi" defaultValue={f.v} placeholder={f.l} style={{width:"100%",padding:"11px 13px",fontSize:13}}/>
+                          <input className="vi" value={settingsForm[f.f]} onChange={e=>setSettingsForm(s=>({...s,[f.f]:e.target.value}))} placeholder={f.l} style={{width:"100%",padding:"11px 13px",fontSize:13}}/>
                         </div>
                       ))}
-                      <button className="bg" style={{padding:"12px",fontSize:13,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
-                        <IC n="check" sz={14}/> Save Changes
+                      <button className="bg" onClick={handleSaveProfile} disabled={savingProfile} style={{padding:"12px",fontSize:13,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:savingProfile?.7:1}}>
+                        {savingProfile?<><span style={{width:14,height:14,border:"2px solid rgba(0,0,0,.3)",borderTopColor:"#000",borderRadius:"50%",display:"inline-block",animation:"spin 1s linear infinite"}}/> Saving…</>:<><IC n="check" sz={14}/> Save Changes</>}
                       </button>
                       <button onClick={()=>{ onLogout?.(); onClose(); }}
                         style={{padding:"11px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
@@ -2707,7 +2775,7 @@ const ExitIntentBanner = ({ suppress, onShopNow }) => {
 
 const PortalShell = ({
   user,products=[],orders=[],
-  onLogin,onLogout,onStaffLogin,
+  onLogin,onLogout,onStaffLogin,onUpdateProfile,
   onAddToCart:extAdd,
   onRemoveFromCart:extRemove,
   onUpdateCartQty:extUpdate,
@@ -2834,7 +2902,7 @@ const PortalShell = ({
       <AnimatePresence>{srchOpen&&<SearchOverlay open={srchOpen} onClose={()=>setSrchOpen(false)} products={products}/>}</AnimatePresence>
       <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart} onCheckout={()=>setCheckoutOpen(true)}/>
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
-      <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout}/>
+      <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout} onUpdateProfile={onUpdateProfile}/>
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}
         onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}
         products={products} wishlist={wl} onWishlistToggle={toggleWl} onSelectProduct={setQvProd}/>
