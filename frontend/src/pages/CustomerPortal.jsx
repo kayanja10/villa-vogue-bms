@@ -1317,7 +1317,7 @@ const AboutSection = () => (
           <div style={{position:"relative"}}>
             <div style={{borderRadius:24,overflow:"hidden",aspectRatio:"3/4",background:"var(--bt)",maxHeight:520}}>
               <img
-                src="https://i.postimg.cc/ZWrF3t86/me-now.jpg"
+                src="/about-founder.jpg"
                 onError={e=>{e.target.style.display="none";e.target.nextSibling.style.display="flex";}}
                 alt="Kayanja Wilfred — Founder, Villa Vogue"
                 style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"top"}}
