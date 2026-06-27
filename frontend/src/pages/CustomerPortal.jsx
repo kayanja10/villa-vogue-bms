@@ -1234,25 +1234,25 @@ const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
 // ── Hero slideshow images (real Villa Vogue products) ────────────────────────
 const HERO_SLIDES = [
   {
-    img: "/hero/villa-hero-mens-polo-set.jpg",
+    img: "/villa-hero-mens-polo-set.jpg",
     label: "Men's Casual Edit",
     title: "Effortless\nWeekend\nStyle",
     sub: "A sharp polo and tailored trousers, paired the way they were meant to be. Smart-casual, done right.",
   },
   {
-    img: "/hero/villa-hero-mens-polos.jpg",
+    img: "/villa-hero-mens-polos.jpg",
     label: "Men's Polos",
     title: "Sharp,\nClean,\nClassic",
     sub: "Wardrobe staples that go with everything — built to look this good every single day.",
   },
   {
-    img: "/hero/villa-hero-womens-floral-dress.jpg",
+    img: "/villa-hero-womens-floral-dress.jpg",
     label: "Women's Wear",
     title: "Feminine\nFlorals,\nReimagined",
     sub: "A flattering wrap silhouette in soft floral print — easy elegance for any occasion.",
   },
   {
-    img: "/hero/villa-hero-mens-trousers.jpg",
+    img: "/villa-hero-mens-trousers.jpg",
     label: "Men's Tailoring",
     title: "Precision\nTailored,\nEvery Stitch",
     sub: "Clean lines, a confident fit, and the kind of finish that holds up to a closer look.",
