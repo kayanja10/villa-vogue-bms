@@ -1234,28 +1234,28 @@ const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
 // ── Hero slideshow images (real Villa Vogue products) ────────────────────────
 const HERO_SLIDES = [
   {
-    img: "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&q=80",
-    label: "New Collection",
-    title: "Luxury Fashion\nfor the Modern\nLifestyle",
-    sub: "Discover curated collections blending timeless elegance with contemporary sophistication.",
+    img: "/hero/villa-hero-mens-polo-set.jpg",
+    label: "Men's Casual Edit",
+    title: "Effortless\nWeekend\nStyle",
+    sub: "A sharp polo and tailored trousers, paired the way they were meant to be. Smart-casual, done right.",
   },
   {
-    img: "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=800&q=80",
+    img: "/hero/villa-hero-mens-polos.jpg",
+    label: "Men's Polos",
+    title: "Sharp,\nClean,\nClassic",
+    sub: "Wardrobe staples that go with everything — built to look this good every single day.",
+  },
+  {
+    img: "/hero/villa-hero-womens-floral-dress.jpg",
     label: "Women's Wear",
-    title: "Elegance in\nEvery\nThread",
-    sub: "From casual chic to red-carpet ready — find your perfect look at Villa Vogue.",
+    title: "Feminine\nFlorals,\nReimagined",
+    sub: "A flattering wrap silhouette in soft floral print — easy elegance for any occasion.",
   },
   {
-    img: "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=800&q=80",
-    label: "Men's Collection",
-    title: "Dress to\nImpress,\nEvery Day",
-    sub: "Sharp tailoring meets modern style. Look your best for every occasion.",
-  },
-  {
-    img: "https://images.unsplash.com/photo-1558769132-cb1aea458c5e?w=800&q=80",
-    label: "Trending Now",
-    title: "The Latest\nArrivals\nAre Here",
-    sub: "Fresh drops every week. Be the first to wear what everyone will be talking about.",
+    img: "/hero/villa-hero-mens-trousers.jpg",
+    label: "Men's Tailoring",
+    title: "Precision\nTailored,\nEvery Stitch",
+    sub: "Clean lines, a confident fit, and the kind of finish that holds up to a closer look.",
   },
 ];
 
