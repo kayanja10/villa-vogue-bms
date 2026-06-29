@@ -222,7 +222,7 @@ const Navbar = ({user,cart,wishlist,onLogin,onStaffLogin,onCartOpen,onSearchOpen
     {l:"Women",s:["Dresses","Tops","Skirts","Pants","Knitwear","Blazers"]},
     {l:"Men",s:["Shirts","Trousers","Jackets","Suits","Casual","Formal"]},
     {l:"Accessories",s:["Bags","Shoes","Jewelry","Belts","Scarves","Sunglasses"]},
-    {l:"Collections",s:["New Arrivals","Best Sellers","Wedding","Corporate","Luxury","Sale"]},
+    {l:"Collections",s:["New Arrivals","Best Sellers","Corporate","Luxury","Sale"]},
   ];
   const cartQty = cart.reduce((a,i)=>a+i.qty,0);
   return (
@@ -357,7 +357,7 @@ const SearchOverlay = ({open,onClose,products=[]}) => {
       else setRes([]);
     },250);
   },[q,products]);
-  const pop=["Luxury Dresses","Wedding Collection","Corporate Attire","Accessories","New Arrivals","Sale"];
+  const pop=["Luxury Dresses","Corporate Attire","Accessories","New Arrivals","Sale"];
   if(!open)return null;
   return (
     <motion.div className="mb" onClick={e=>e.target===e.currentTarget&&onClose()} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
@@ -1428,7 +1428,7 @@ const AboutSection = () => (
 
 const CollectionsSection = () => {
   const cs=[
-    {n:"New Arrivals",e:"✨",h:"/store?collection=new"},{n:"Wedding",e:"💍",h:"/store?collection=wedding"},
+    {n:"New Arrivals",e:"✨",h:"/store?collection=new"},
     {n:"Corporate",e:"👔",h:"/store?collection=corporate"},{n:"Luxury",e:"👑",h:"/store?collection=luxury"},
     {n:"Casual",e:"🌿",h:"/store?collection=casual"},{n:"Sale",e:"🏷",h:"/store?collection=sale"},
     {n:"Accessories",e:"👜",h:"/store?collection=accessories"},{n:"Trending",e:"🔥",h:"/store?collection=trending"},
@@ -1693,7 +1693,7 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
   const [activeCategory, setActiveCategory] = useState("All");
   const [activeGender, setActiveGender] = useState("All");
   // "quick" is either null, "new" (New Arrivals) or "sale" (Sale) — applied
-  // on top of the category filter. Category-name filters (Wedding, etc.)
+  // on top of the category filter. Category-name filters (Corporate, etc.)
   // just set activeCategory directly below.
   const [quick, setQuick] = useState(null);
 
@@ -1726,8 +1726,7 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
     return matchCat && matchGender && matchSearch && matchQuick;
   });
 
-  const shown = filtered.slice(0, visible);
-  const hasMore = visible < filtered.length;
+  const shown = filtered;
 
   return (
     <section style={{padding:"60px 0",background:"var(--bs)"}}>
@@ -1832,23 +1831,6 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
           }
         </div>
 
-        {/* Load More button */}
-        {hasMore && (
-          <div style={{textAlign:"center"}}>
-            <motion.button className="bgh" onClick={()=>setVisible(v=>v+PRODUCTS_PER_PAGE)} whileTap={{scale:.97}}
-              style={{padding:"12px 36px",fontSize:13,display:"inline-flex",alignItems:"center",gap:8}}>
-              Show More Products
-              <span style={{fontSize:11,color:"var(--tm)"}}>({filtered.length - visible} remaining)</span>
-              <IC n="cd" sz={14}/>
-            </motion.button>
-          </div>
-        )}
-        {!hasMore && shown.length > PRODUCTS_PER_PAGE && (
-          <div style={{textAlign:"center"}}>
-            <p style={{fontSize:12,color:"var(--tm)"}}>All {filtered.length} products shown</p>
-            <button className="bgh" onClick={()=>setVisible(PRODUCTS_PER_PAGE)} style={{marginTop:8,padding:"7px 20px",fontSize:12}}>Show Less ↑</button>
-          </div>
-        )}
       </div>
     </section>
   );
@@ -1860,7 +1842,7 @@ const FeaturedProducts = ({products,wishlist,onAddToCart,onQuickView,onWishlistT
 // Re-sorting happens from the live `products` prop, so whenever sales data on
 // a product changes the section reorders itself on the next render with no
 // extra wiring needed.
-const BEST_SELLERS_COUNT = 8;
+const BEST_SELLERS_COUNT = 3;
 const BestSellersSection = ({products,wishlist,onAddToCart,onQuickView,onWishlistToggle,loading}) => {
   const ranked = (products || [])
     .map(normalizeProduct)
@@ -1902,14 +1884,34 @@ const BestSellersSection = ({products,wishlist,onAddToCart,onQuickView,onWishlis
 };
 
 const OrderTracking = ({orders=[]}) => {
-  const steps=[
-    {k:"received",l:"Order Received",i:"pkg"},{k:"confirmed",l:"Confirmed",i:"check"},
-    {k:"preparing",l:"Preparing",i:"tag"},{k:"packed",l:"Packed",i:"pkg"},
-    {k:"shipped",l:"Shipped",i:"truck"},{k:"out_for_delivery",l:"Out for Delivery",i:"pin"},
-    {k:"delivered",l:"Delivered",i:"check"},
-  ];
-  const act=orders[0];
-  const ai=act?steps.findIndex(s=>s.k===act.status):1;
+  // Local copy that live-updates via socket when staff changes an order's
+  // status — mirrors the same pattern used in AccountDrawer so this homepage
+  // widget never goes stale without a full page reload.
+  const [liveOrders,setLiveOrders] = useState(orders);
+  useEffect(()=>{ setLiveOrders(orders); },[orders]);
+  useEffect(()=>{
+    const socket = window.__vv_socket || window.socket;
+    if(!socket) return;
+    const handler = (update) => {
+      setLiveOrders(prev => prev.map(o =>
+        (o.id===update.orderId || o.orderNumber===update.orderNumber)
+          ? { ...o, orderStatus: update.status ?? o.orderStatus }
+          : o
+      ));
+    };
+    socket.on('order:status-public', handler);
+    socket.on('order:status-changed', handler);
+    return () => {
+      socket.off('order:status-public', handler);
+      socket.off('order:status-changed', handler);
+    };
+  },[]);
+
+  const act=liveOrders[0];
+  // Read the same field AccountDrawer reads — backend sends orderStatus,
+  // with status as a legacy fallback — so this always matches what staff
+  // actually set, instead of looking for a field/value that doesn't exist.
+  const actStatus = act ? (act.orderStatus||act.status||"pending") : "confirmed";
   return (
     <section style={{padding:"80px 0",background:"var(--bp)"}}>
       <div style={{maxWidth:1400,margin:"0 auto",padding:"0 24px"}}>
@@ -1917,24 +1919,14 @@ const OrderTracking = ({orders=[]}) => {
         <Reveal delay={.1}>
           <div className="gc" style={{maxWidth:620,margin:"0 auto",padding:32}}>
             {act?(
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:24}}>
-                <div><p className="ll">Order #{act.id}</p><p style={{fontFamily:"var(--fd)",fontSize:18,marginTop:4}}>{act.item||"Your Recent Order"}</p></div>
-                <span className="lb" style={{alignSelf:"flex-start"}}>{act.status?.replace("_"," ")}</span>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:24,alignItems:"center"}}>
+                <div><p className="ll">Order #{act.orderNumber||act.id}</p><p style={{fontFamily:"var(--fd)",fontSize:18,marginTop:4}}>{act.item||"Your Recent Order"}</p></div>
+                <OrderStatusBadge status={actStatus}/>
               </div>
             ):(
               <div style={{marginBottom:20}}><p className="ll" style={{marginBottom:6}}>Example Tracking</p><p style={{color:"var(--tm)",fontSize:13}}>This is how your order progress appears</p></div>
             )}
-            <div style={{display:"flex",flexDirection:"column"}}>
-              {steps.map((step,i)=>(
-                <div key={step.k} className="ts">
-                  <div className={`td ${i<=ai?"on":""}`}>{i<=ai&&<IC n={step.i} sz={9} c="#000"/>}</div>
-                  <div style={{paddingBottom:i<steps.length-1?18:0}}>
-                    <p style={{fontSize:13,fontWeight:i<=ai?600:400,color:i<=ai?"var(--tp)":"var(--tm)"}}>{step.l}</p>
-                    {i===ai&&<p style={{fontSize:11,color:"var(--gold)",marginTop:2}}>Current Status</p>}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <OrderStatusStepper status={actStatus}/>
           </div>
         </Reveal>
       </div>
@@ -1992,7 +1984,6 @@ const Testimonials = () => {
   const rs=[
     {n:"Amara K.",l:"Kampala",r:5,t:"Absolutely stunning quality. The silk dress arrived beautifully packaged and fits like it was made for me.",a:"A"},
     {n:"David M.",l:"Entebbe",r:5,t:"Villa Vogue transformed my wardrobe. The corporate collection is exceptional — professional yet stylish.",a:"D"},
-    {n:"Grace N.",l:"Jinja",r:5,t:"The wedding collection is breathtaking. My bridesmaids looked incredible. Quality exceeds international brands!",a:"G"},
   ];
   return (
     <section style={{padding:"80px 0",background:"var(--bp)"}}>
@@ -2062,7 +2053,7 @@ const Newsletter = () => {
 // existing "No products found" state for that filter (not a crash), but you
 // should double check these strings against your real categories.
 const FOOTER_LINKS = {
-  Shop: ["New Arrivals","Best Sellers","Wedding","Corporate","Accessories","Sale"],
+  Shop: ["New Arrivals","Best Sellers","Corporate","Accessories","Sale"],
   Account: ["Sign In","Register","My Orders","Wishlist","Loyalty Rewards","Gift Cards"],
   Support: ["Contact Us","Size Guide","Returns","Shipping Info","FAQs"],
 };
@@ -2510,7 +2501,7 @@ const ReviewForm = ({orders=[],userName=""}) => {
   );
 };
 
-const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) => {
+const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile,onShopNow}) => {
   // Local copy of orders that can be live-updated via socket when staff changes status —
   // without this, the customer would need to close/reopen the drawer to see updates
   const [liveOrders,setLiveOrders] = useState(orders);
@@ -2593,7 +2584,7 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) =
                     <span style={{display:"inline-block",marginTop:4,fontSize:10,fontWeight:700,letterSpacing:".08em",color:tierColor,textTransform:"uppercase"}}>⭐ {tier}</span>
                   </div>
                 </div>
-                <button onClick={onClose} style={{background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:8,cursor:"pointer",color:"var(--ts)",flexShrink:0}}><IC n="x" sz={15}/></button>
+                <button type="button" onClick={onClose} style={{background:"var(--ib)",border:"1px solid var(--br)",borderRadius:8,padding:8,cursor:"pointer",color:"var(--ts)",flexShrink:0,touchAction:"manipulation"}}><IC n="x" sz={15}/></button>
               </div>
 
               {/* Points bar */}
@@ -2608,19 +2599,20 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) =
                 <p style={{fontSize:10,color:"var(--tm)",marginTop:5}}>{Math.max(0,1000-pts)} pts to Silver · {Math.max(0,5000-pts)} pts to Gold</p>
               </div>
 
-              {/* Tabs */}
-              <div style={{display:"flex",gap:4,overflowX:"auto",paddingBottom:1}}>
+              {/* Tabs — equal-width grid so all 5 always fit & are tappable, even on the narrowest phones */}
+              <div style={{display:"grid",gridTemplateColumns:`repeat(${tabs.length},1fr)`,gap:4,paddingBottom:1}}>
                 {tabs.map(t=>(
-                  <button key={t.k}
-                    onClick={(e)=>{ e.stopPropagation(); setTab(t.k); }}
-                    style={{flex:"1 0 auto",minWidth:56,padding:"7px 3px",borderRadius:9,border:`1.5px solid ${tab===t.k?"var(--gold)":"var(--br)"}`,
+                  <button key={t.k} type="button" aria-selected={tab===t.k} role="tab"
+                    onClick={(e)=>{ e.preventDefault(); e.stopPropagation(); setTab(t.k); }}
+                    style={{width:"100%",minWidth:0,minHeight:44,padding:"7px 2px",borderRadius:9,border:`1.5px solid ${tab===t.k?"var(--gold)":"var(--br)"}`,
                       background:tab===t.k?"rgba(201,168,76,.13)":"transparent",
                       color:tab===t.k?"var(--gold)":"var(--tm)",
-                      fontSize:9,fontWeight:700,cursor:"pointer",
-                      display:"flex",flexDirection:"column",alignItems:"center",gap:2,
-                      transition:"all .2s",whiteSpace:"nowrap"}}>
+                      fontSize:"clamp(8px,2.4vw,10px)",fontWeight:700,cursor:"pointer",
+                      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,
+                      transition:"all .2s",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",
+                      WebkitTapHighlightColor:"transparent",touchAction:"manipulation",userSelect:"none"}}>
                     <IC n={t.i} sz={12}/>
-                    {t.l}
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{t.l}</span>
                   </button>
                 ))}
               </div>
@@ -2644,8 +2636,8 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) =
                           <div><p style={{fontSize:11,color:"var(--tm)"}}>{s.l}</p><p style={{fontSize:15,fontWeight:700,color:s.c}}>{s.v}</p></div>
                         </div>
                       ))}
-                      <button onClick={()=>{ onLogout?.(); onClose(); }}
-                        style={{padding:"12px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+                      <button type="button" onClick={()=>{ onLogout?.(); onClose(); }}
+                        style={{padding:"12px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",marginTop:6,display:"flex",alignItems:"center",justifyContent:"center",gap:7,touchAction:"manipulation"}}>
                         <IC n="logout" sz={14} c="#e74c3c"/> Sign Out
                       </button>
                     </div>
@@ -2660,7 +2652,7 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) =
                         <div style={{fontSize:36,marginBottom:12,opacity:.3}}>📦</div>
                         <p style={{fontFamily:"var(--fd)",fontSize:18,fontWeight:300,marginBottom:6}}>No orders yet</p>
                         <p style={{fontSize:12,color:"var(--tm)",marginBottom:16}}>Your order history will appear here</p>
-                        <button className="bg" onClick={onClose} style={{padding:"10px 24px",fontSize:13}}>Start Shopping</button>
+                        <button className="bg" type="button" onClick={()=>{ onClose(); setTimeout(()=>{ (onShopNow||(()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})))(); },280); }} style={{padding:"10px 24px",fontSize:13}}>Start Shopping</button>
                       </div>
                     ):liveOrders.map(o=>(
                       <div key={o.id} style={{padding:13,background:"var(--bc)",border:"1px solid var(--br)",borderRadius:13,marginBottom:10}}>
@@ -2717,11 +2709,11 @@ const AccountDrawer = ({open,onClose,user,orders=[],onLogout,onUpdateProfile}) =
                           <input className="vi" value={settingsForm[f.f]} onChange={e=>setSettingsForm(s=>({...s,[f.f]:e.target.value}))} placeholder={f.l} style={{width:"100%",padding:"11px 13px",fontSize:13}}/>
                         </div>
                       ))}
-                      <button className="bg" onClick={handleSaveProfile} disabled={savingProfile} style={{padding:"12px",fontSize:13,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:savingProfile?.7:1}}>
+                      <button className="bg" type="button" onClick={handleSaveProfile} disabled={savingProfile} style={{padding:"12px",fontSize:13,marginTop:4,display:"flex",alignItems:"center",justifyContent:"center",gap:7,opacity:savingProfile?.7:1,touchAction:"manipulation"}}>
                         {savingProfile?<><span style={{width:14,height:14,border:"2px solid rgba(0,0,0,.3)",borderTopColor:"#000",borderRadius:"50%",display:"inline-block",animation:"spin 1s linear infinite"}}/> Saving…</>:<><IC n="check" sz={14}/> Save Changes</>}
                       </button>
-                      <button onClick={()=>{ onLogout?.(); onClose(); }}
-                        style={{padding:"11px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+                      <button type="button" onClick={()=>{ onLogout?.(); onClose(); }}
+                        style={{padding:"11px",fontSize:13,background:"rgba(255,60,60,.08)",border:"1.5px solid rgba(255,60,60,.25)",borderRadius:12,color:"#e74c3c",fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:7,touchAction:"manipulation"}}>
                         <IC n="logout" sz={14} c="#e74c3c"/> Sign Out
                       </button>
                     </div>
@@ -2923,7 +2915,7 @@ const PortalShell = ({
       case "Best Sellers":
         scrollToId("best-sellers");
         break;
-      case "Wedding": case "Corporate": case "Accessories":
+      case "Corporate": case "Accessories":
         setShopFilter(label);setShopFilterNonce(n=>n+1);
         requestAnimationFrame(()=>scrollToId("featured"));
         break;
@@ -2982,7 +2974,8 @@ const PortalShell = ({
       <AnimatePresence>{srchOpen&&<SearchOverlay open={srchOpen} onClose={()=>setSrchOpen(false)} products={products}/>}</AnimatePresence>
       <CartDrawer open={cartOpen} onClose={()=>setCartOpen(false)} cart={cart} onUpdateQty={updateQty} onRemove={removeFromCart} onCheckout={()=>setCheckoutOpen(true)}/>
       <WishlistDrawer open={wlOpen} onClose={()=>setWlOpen(false)} wishlist={wl} onRemove={id=>setWl(p=>p.filter(i=>i.id!==id))} onAddToCart={addToCart}/>
-      <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout} onUpdateProfile={onUpdateProfile}/>
+      <AccountDrawer open={acctOpen} onClose={()=>setAcctOpen(false)} user={user} orders={orders} onLogout={onLogout} onUpdateProfile={onUpdateProfile}
+        onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
       <QuickViewModal product={qvProd} open={!!qvProd} onClose={()=>setQvProd(null)} onAddToCart={addToCart}
         onOrderOnline={(item)=>{ addToCart(item); setCheckoutOpen(true); }}
         products={products} wishlist={wl} onWishlistToggle={toggleWl} onSelectProduct={setQvProd}/>
