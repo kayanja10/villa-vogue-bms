@@ -2,7 +2,7 @@
 // Dark/Light Mode | Staff Login | All Features Preserved
 
 import React, { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from "react";
-import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
+import { motion, AnimatePresence, useScroll, useTransform, useMotionValue, useSpring } from "framer-motion";
 
 // Native IntersectionObserver — works with ANY framer-motion version
 function useInView(ref, { once = true, margin = "0px" } = {}) {
@@ -1246,115 +1246,266 @@ const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
   );
 };
 
-// ── Hero slideshow images (real Villa Vogue products) ────────────────────────
-const HERO_SLIDES = [
-  {
-    img: "/villa-hero-mens-polo-set.jpg",
-    label: "Men's Casual Edit",
-    title: "Effortless\nWeekend\nStyle",
-    sub: "A sharp polo and tailored trousers, paired the way they were meant to be. Smart-casual, done right.",
-  },
-  {
-    img: "/villa-hero-mens-polos.jpg",
-    label: "Men's Polos",
-    title: "Sharp,\nClean,\nClassic",
-    sub: "Wardrobe staples that go with everything — built to look this good every single day.",
-  },
-  {
-    img: "/villa-hero-womens-floral-dress.jpg",
-    label: "Women's Wear",
-    title: "Feminine\nFlorals,\nReimagined",
-    sub: "A flattering wrap silhouette in soft floral print — easy elegance for any occasion.",
-  },
-  {
-    img: "/villa-hero-mens-trousers.jpg",
-    label: "Men's Tailoring",
-    title: "Precision\nTailored,\nEvery Stitch",
-    sub: "Clean lines, a confident fit, and the kind of finish that holds up to a closer look.",
-  },
-];
+// ── Hero 3D carousel — helpers ───────────────────────────────────────────────
+// Picks 5-7 real, already-loaded products to showcase in the rotating hero.
+// Prioritizes new arrivals and sale items (most "showable"), then rating, and
+// degrades gracefully — fewer items, or none at all — if the catalog is thin
+// or still loading, instead of ever throwing.
+const HERO_MAX = 7;
+const pickHeroProducts = (products) => {
+  const dp = (products || []).map(normalizeProduct).filter(p => p.image_url);
+  const scored = dp
+    .map(p => ({ p, score: (isNewArrival(p) ? 3 : 0) + (p.is_sale ? 2 : 0) + (Number(p.rating) || 0) * .5 }))
+    .sort((a, b) => b.score - a.score);
+  return scored.slice(0, HERO_MAX).map(s => s.p);
+};
 
-const HeroSection = ({onShopNow}) => {
-  const [current,setCurrent]=useState(0);
-  const [prev,setPrev]=useState(null);
+// Shortest hop-distance between two indices on an N-item ring (0 = active).
+const ringDist = (i, active, n) => { const d = Math.abs(i - active); return Math.min(d, n - d); };
 
+// Parses a stat string like "10K+" or "4.9★" into {num, suffix} so it can be
+// counted upward and re-rendered with its original formatting intact.
+const parseStat = (str) => {
+  const m = String(str).match(/^([\d.]+)(.*)$/);
+  if (!m) return { num: 0, suffix: str, dec: 0 };
+  return { num: parseFloat(m[1]), suffix: m[2], dec: m[1].includes(".") ? 1 : 0 };
+};
+
+const HERO_STATS = [{ v: "500+", l: "Products" }, { v: "10K+", l: "Customers" }, { v: "4.9★", l: "Rating" }];
+
+// Counts a single stat upward once it scrolls into view. Owns its own tiny
+// bit of state so this is the only thing that re-renders while counting.
+const HeroStat = ({ stat, inView }) => {
+  const { num, suffix, dec } = useMemo(() => parseStat(stat.v), [stat.v]);
+  const [val, setVal] = useState(0);
+  const started = useRef(false);
+  useEffect(() => {
+    if (!inView || started.current) return;
+    started.current = true;
+    const start = performance.now(), dur = 1300;
+    let raf;
+    const tick = (t) => {
+      const p = Math.min(1, (t - start) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const mult = 10 ** dec;
+      setVal(Math.round(num * eased * mult) / mult);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inView, num, dec]);
+  return (
+    <div>
+      <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:300,color:"var(--gold)"}}>{dec ? val.toFixed(1) : val}{suffix}</div>
+      <div style={{fontSize:10,color:"rgba(255,255,255,.55)",letterSpacing:".08em",textTransform:"uppercase",marginTop:3}}>{stat.l}</div>
+    </div>
+  );
+};
+
+const HERO_ROTATE_MS = 7000;
+
+// ── Hero Section — 3D rotating product carousel ─────────────────────────────
+// Presentation-layer only: reads the same `products` already loaded for the
+// rest of the portal and the same `onQuickView`/`onShopNow` handlers other
+// sections already use — no new routing, API calls, or state architecture.
+const HeroSection = ({onShopNow,products,onQuickView}) => {
+  const {theme}=useTheme();
+  const heroProducts=useMemo(()=>pickHeroProducts(products),[products]);
+  const n=heroProducts.length;
+  const [active,setActive]=useState(0);
+  const [paused,setPaused]=useState(false);
+  const activeProduct=n>0?heroProducts[Math.min(active,n-1)]:null;
+
+  // Keep the active index in range if the catalog changes under us
+  useEffect(()=>{ if(active>=n&&n>0) setActive(0); },[n,active]);
+
+  // Auto-advance every 6-8s, paused while a dot has keyboard focus
   useEffect(()=>{
-    const t=setInterval(()=>{
-      setPrev(current);
-      setCurrent(c=>(c+1)%HERO_SLIDES.length);
-    },4500);
-    return ()=>clearInterval(t);
-  },[current]);
+    if(n<2||paused) return;
+    const id=setInterval(()=>setActive(i=>(i+1)%n),HERO_ROTATE_MS);
+    return ()=>clearInterval(id);
+  },[n,paused]);
 
-  const slide=HERO_SLIDES[current];
-  const prevSlide=prev!==null?HERO_SLIDES[prev]:null;
+  const reduceMotion=useMemo(()=>typeof window!=="undefined"&&!!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,[]);
+
+  // Subtle mouse tilt — driven entirely by motion values so it never triggers
+  // a React re-render. Ignored for touch/pen so it can't fight touch scrolling.
+  const rawTiltX=useMotionValue(0), rawTiltY=useMotionValue(0);
+  const tiltX=useSpring(rawTiltX,{stiffness:50,damping:14,mass:.6});
+  const tiltY=useSpring(rawTiltY,{stiffness:50,damping:14,mass:.6});
+  const onStageMove=useCallback((e)=>{
+    if(reduceMotion||e.pointerType!=="mouse") return;
+    const r=e.currentTarget.getBoundingClientRect();
+    rawTiltY.set(((e.clientX-r.left)/r.width-.5)*16);
+    rawTiltX.set(-((e.clientY-r.top)/r.height-.5)*11);
+  },[reduceMotion,rawTiltX,rawTiltY]);
+  const onStageLeave=useCallback(()=>{ rawTiltX.set(0); rawTiltY.set(0); },[rawTiltX,rawTiltY]);
+
+  // Ambient gold particles — generated once, deterministic, never regenerated
+  const particles=useMemo(()=>Array.from({length:16},(_,i)=>({
+    id:i, x:5+((i*37)%90), y:8+((i*53)%84), size:2+(i%3),
+    dur:5+(i%5)*1.3, delay:(i%7)*.4, op:.25+(i%4)*.12,
+  })),[]);
+
+  const step=n>0?360/n:0;
+  const radius="clamp(150px, 21vw, 330px)";
+
+  const statsRef=useRef(null);
+  const statsInView=useInView(statsRef,{once:true,margin:"-40px"});
+
+  const discount=activeProduct?getDiscountInfo(activeProduct):null;
 
   return (
-    <div style={{position:"relative",height:"100vh",minHeight:520,overflow:"hidden",background:"#0a0a0a"}}>
-      {/* Slide images */}
+    <section
+      style={{position:"relative",minHeight:"100vh",overflow:"hidden",background:"#0a0a0a",display:"flex",alignItems:"center"}}
+      onPointerMove={onStageMove} onPointerLeave={onStageLeave}
+    >
+      {/* Layer 1 — blurred boutique background, crossfades with the active product */}
       <AnimatePresence>
-        {prevSlide&&(
-          <motion.div key={`prev-${prev}`} initial={{opacity:1}} animate={{opacity:0}} exit={{opacity:0}} transition={{duration:.9}}
-            style={{position:"absolute",inset:0,zIndex:1}}>
-            <img src={prevSlide.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.55,filter:"brightness(.7)"}}/>
+        {activeProduct?.image_url&&(
+          <motion.div key={activeProduct.id} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
+            transition={{duration:1.3,ease:"easeInOut"}} style={{position:"absolute",inset:0,zIndex:0}}>
+            <img src={activeProduct.image_url} alt="" aria-hidden="true"
+              style={{width:"100%",height:"100%",objectFit:"cover",transform:"scale(1.15)",filter:"blur(42px) saturate(1.2) brightness(.5)"}}/>
           </motion.div>
         )}
       </AnimatePresence>
-      <motion.div key={`curr-${current}`} initial={{opacity:0,scale:1.06}} animate={{opacity:1,scale:1}} transition={{duration:1.1,ease:"easeOut"}}
-        style={{position:"absolute",inset:0,zIndex:2}}>
-        <img src={slide.img} alt="" style={{width:"100%",height:"100%",objectFit:"cover",opacity:.55,filter:"brightness(.7)"}}/>
-      </motion.div>
-      {/* Dark gradient overlay */}
-      <div style={{position:"absolute",inset:0,zIndex:3,background:"linear-gradient(to right, rgba(0,0,0,.75) 40%, rgba(0,0,0,.2) 100%)"}}/>
+      {!activeProduct&&<div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 70% 50%, #1c1a14, #0a0a0a)"}}/>}
 
-      {/* Content */}
-      <div style={{position:"absolute",inset:0,zIndex:4,display:"flex",alignItems:"center",padding:"0 6vw",paddingTop:80}}>
-        <div style={{maxWidth:580}}>
+      {/* Layer 2 — luxury dark overlay (slightly lighter in light theme; text stays white either way for legibility over the photo) */}
+      <div aria-hidden="true" style={{position:"absolute",inset:0,zIndex:1,
+        background: theme==="light"
+          ? "linear-gradient(110deg, rgba(0,0,0,.66) 32%, rgba(0,0,0,.28) 75%, rgba(0,0,0,.4) 100%)"
+          : "linear-gradient(110deg, rgba(0,0,0,.82) 32%, rgba(0,0,0,.35) 75%, rgba(0,0,0,.5) 100%)"}}/>
+      <div aria-hidden="true" style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(circle at 76% 46%, rgba(201,168,76,.12), transparent 62%)"}}/>
+
+      {/* Layer 3 — ambient gold particles */}
+      {!reduceMotion&&(
+        <div aria-hidden="true" style={{position:"absolute",inset:0,zIndex:2,pointerEvents:"none"}}>
+          {particles.map(p=>(
+            <motion.span key={p.id}
+              style={{position:"absolute",left:`${p.x}%`,top:`${p.y}%`,width:p.size,height:p.size,borderRadius:"50%",background:"var(--gold-l)",boxShadow:"0 0 6px 1px var(--gg)"}}
+              animate={{y:[0,-24,0],opacity:[p.op*.3,p.op,p.op*.3]}}
+              transition={{duration:p.dur,repeat:Infinity,ease:"easeInOut",delay:p.delay}}/>
+          ))}
+        </div>
+      )}
+
+      {/* Layer 4 — content: hero copy (left) + rotating carousel (right), synced to the active product */}
+      <div style={{position:"relative",zIndex:4,width:"100%",maxWidth:1400,margin:"0 auto",padding:"90px 6vw 70px",
+        display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",gap:40}}>
+
+        <div style={{flex:"1 1 440px",maxWidth:560}}>
           <AnimatePresence mode="wait">
-            <motion.div key={current} initial={{opacity:0,y:28}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-20}} transition={{duration:.6}}>
+            <motion.div key={activeProduct?.id||"empty"} initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-16}} transition={{duration:.55,ease:"easeOut"}}>
               <span style={{fontSize:11,letterSpacing:".2em",textTransform:"uppercase",color:"var(--gold)",fontWeight:600,display:"block",marginBottom:16}}>
-                ✦ {slide.label}
+                ✦ {activeProduct?(activeProduct.category||"Featured"):"Villa Vogue"}
               </span>
-              <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(38px,6.5vw,80px)",fontWeight:300,lineHeight:1.08,color:"#fff",marginBottom:20,whiteSpace:"pre-line"}}>
-                {slide.title.split('\n').map((line,i)=>
-                  i===1?<span key={i} style={{fontStyle:"italic",color:"var(--gold)"}}>{line}<br/></span>:<span key={i}>{line}<br/></span>
-                )}
+              <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(36px,5.6vw,72px)",fontWeight:300,lineHeight:1.1,color:"#fff",marginBottom:18}}>
+                {activeProduct
+                  ? <>Discover<br/><em style={{fontStyle:"italic",color:"var(--gold)"}}>{activeProduct.name}</em></>
+                  : <>Effortless<br/><em style={{fontStyle:"italic",color:"var(--gold)"}}>Luxury Style</em></>}
               </h1>
-              <p style={{fontSize:15,color:"rgba(255,255,255,.75)",lineHeight:1.8,marginBottom:32,maxWidth:420}}>{slide.sub}</p>
+              <p style={{fontSize:15,color:"rgba(255,255,255,.75)",lineHeight:1.8,marginBottom:22,maxWidth:420}}>
+                {activeProduct?.description||"Curated pieces from Kampala's most trusted fashion destination — quality, elegance and confidence in every stitch."}
+              </p>
+              {activeProduct&&(
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:28,flexWrap:"wrap"}}>
+                  <Stars r={activeProduct.rating||4.2} count={activeProduct.review_count}/>
+                  <span style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--gold)",fontWeight:500}}>UGX {Number(activeProduct.price).toLocaleString()}</span>
+                  {discount&&<span style={{fontSize:13,color:"rgba(255,255,255,.45)",textDecoration:"line-through"}}>UGX {discount.original.toLocaleString()}</span>}
+                  {discount&&<span className="pct-badge">-{discount.percent}%</span>}
+                </div>
+              )}
             </motion.div>
           </AnimatePresence>
+
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
             <motion.button className="bg" onClick={onShopNow} whileHover={{scale:1.04}} whileTap={{scale:.97}}
               style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em"}}>Shop Collection</motion.button>
-            <motion.button className="bgh" onClick={onShopNow} whileHover={{scale:1.04}} whileTap={{scale:.97}}
-              style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em",color:"#fff",borderColor:"rgba(255,255,255,.35)"}}>View All</motion.button>
+            <motion.button className="bgh" onClick={()=>(activeProduct&&onQuickView?onQuickView(activeProduct):onShopNow?.())}
+              whileHover={{scale:1.04}} whileTap={{scale:.97}}
+              style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em",color:"#fff",borderColor:"rgba(255,255,255,.35)"}}>
+              {activeProduct?"Quick View":"View All"}
+            </motion.button>
           </div>
-          {/* Stats */}
-          <div style={{display:"flex",gap:28,marginTop:44,paddingTop:28,borderTop:"1px solid rgba(255,255,255,.15)"}}>
-            {[{n:"500+",l:"Products"},{n:"10K+",l:"Customers"},{n:"4.9★",l:"Rating"}].map(s=>(
-              <div key={s.n}>
-                <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:300,color:"var(--gold)"}}>{s.n}</div>
-                <div style={{fontSize:10,color:"rgba(255,255,255,.55)",letterSpacing:".08em",textTransform:"uppercase",marginTop:3}}>{s.l}</div>
-              </div>
-            ))}
+
+          {/* Stats — count upward once visible */}
+          <div ref={statsRef} style={{display:"flex",gap:28,marginTop:44,paddingTop:28,borderTop:"1px solid rgba(255,255,255,.15)"}}>
+            {HERO_STATS.map(s=><HeroStat key={s.v} stat={s} inView={statsInView}/>)}
           </div>
         </div>
+
+        {/* 3D rotating product carousel */}
+        {n>0&&(
+          <div style={{flex:"1 1 320px",display:"flex",justifyContent:"center",perspective:"1300px"}}>
+            <motion.div style={{position:"relative",width:"clamp(200px,26vw,360px)",height:"clamp(240px,32vw,440px)",transformStyle:"preserve-3d",rotateX:tiltX,rotateY:tiltY}}>
+              <motion.div style={{position:"absolute",inset:0,transformStyle:"preserve-3d"}}
+                animate={{rotateY:-active*step}} transition={{type:"spring",stiffness:40,damping:16,mass:1.1}}>
+                {heroProducts.map((p,i)=>{
+                  const dist=ringDist(i,active,n);
+                  const tier=dist===0?"active":dist===1?"near":"far";
+                  return (
+                    <div key={p.id} style={{position:"absolute",inset:0,transform:`rotateY(${i*step}deg) translateZ(${radius})`,transformStyle:"preserve-3d"}}>
+                      <motion.div
+                        animate={{
+                          scale: tier==="active"?1:tier==="near"?.72:.5,
+                          opacity: tier==="active"?1:tier==="near"?.5:.22,
+                          y: tier==="active"?-8:0,
+                          filter: tier==="active"?"blur(0px) brightness(1.1) saturate(1.08)":tier==="near"?"blur(2.5px) brightness(.62) saturate(.85)":"blur(5px) brightness(.42) saturate(.7)",
+                        }}
+                        transition={{type:"spring",stiffness:110,damping:18}}
+                        style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}
+                      >
+                        <motion.div
+                          animate={reduceMotion?{}:{y:[0,-10,0]}}
+                          transition={{duration:4+(i%4)*.5,repeat:Infinity,ease:"easeInOut",delay:i*.3}}
+                          style={{position:"relative",width:"min(48vw,230px)",aspectRatio:"3/4"}}
+                        >
+                          <div style={{width:"100%",height:"100%",borderRadius:20,overflow:"hidden",position:"relative",background:"var(--bt)",
+                            boxShadow: tier==="active"?"0 30px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(201,168,76,.55), 0 0 44px 6px rgba(201,168,76,.32)":"0 16px 34px rgba(0,0,0,.4)"}}>
+                            <img src={p.image_url} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            <div aria-hidden="true" style={{position:"absolute",inset:0,background:"linear-gradient(135deg, rgba(255,255,255,.16), transparent 45%)"}}/>
+                          </div>
+                          {/* Soft reflection beneath the card */}
+                          <div aria-hidden="true" style={{position:"absolute",top:"100%",left:0,right:0,height:"38%",
+                            backgroundImage:`url(${p.image_url})`,backgroundSize:"cover",backgroundPosition:"center",
+                            transform:"scaleY(-1)",opacity:tier==="active"?.22:.08,filter:"blur(2px)",
+                            WebkitMaskImage:"linear-gradient(to bottom, rgba(0,0,0,.5), transparent)",
+                            maskImage:"linear-gradient(to bottom, rgba(0,0,0,.5), transparent)"}}/>
+                        </motion.div>
+                      </motion.div>
+                    </div>
+                  );
+                })}
+              </motion.div>
+            </motion.div>
+          </div>
+        )}
       </div>
 
-      {/* Slide dots */}
-      <div style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:5,display:"flex",gap:8}}>
-        {HERO_SLIDES.map((_,i)=>(
-          <button key={i} onClick={()=>{setPrev(current);setCurrent(i);}}
-            style={{width:i===current?24:7,height:7,borderRadius:10,background:i===current?"var(--gold)":"rgba(255,255,255,.35)",border:"none",cursor:"pointer",transition:"all .4s",padding:0}}/>
-        ))}
-      </div>
+      {/* Screen-reader announcement of the active product (visually hidden) */}
+      <span aria-live="polite" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0,0,0,0)"}}>
+        {activeProduct?`Now featuring ${activeProduct.name}, UGX ${Number(activeProduct.price).toLocaleString()}`:""}
+      </span>
+
+      {/* Carousel dots — real buttons, keyboard-focusable, double as manual navigation */}
+      {n>1&&(
+        <div style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:5,display:"flex",gap:8}}>
+          {heroProducts.map((p,i)=>(
+            <button key={p.id} onClick={()=>setActive(i)} onFocus={()=>setPaused(true)} onBlur={()=>setPaused(false)}
+              aria-label={`Show ${p.name}`} aria-current={i===active}
+              style={{width:i===active?24:7,height:7,borderRadius:10,background:i===active?"var(--gold)":"rgba(255,255,255,.35)",border:"none",cursor:"pointer",transition:"all .4s",padding:0}}/>
+          ))}
+        </div>
+      )}
 
       {/* Scroll hint */}
       <div style={{position:"absolute",bottom:28,right:32,zIndex:5,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
         <span style={{fontSize:9,letterSpacing:".2em",textTransform:"uppercase",color:"rgba(255,255,255,.4)"}}>Scroll</span>
         <motion.div style={{width:1,height:32,background:"rgba(255,255,255,.3)"}} animate={{scaleY:[0,1,0]}} transition={{duration:1.8,repeat:Infinity}}/>
       </div>
-    </div>
+    </section>
   );
 };
 
@@ -2958,7 +3109,7 @@ const PortalShell = ({
         onSearchOpen={()=>setSrchOpen(true)}
         onAccountOpen={()=>setAcctOpen(true)}/>
       <main>
-        <HeroSection onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
+        <HeroSection products={products} onQuickView={setQvProd} onShopNow={()=>document.getElementById("featured")?.scrollIntoView({behavior:"smooth"})}/>
         <CollectionsSection/>
         <BestSellersSection products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}/>
         <div id="featured"><FeaturedProducts products={products} wishlist={wl} onAddToCart={addToCart} onQuickView={setQvProd} onWishlistToggle={toggleWl} loading={loading}
