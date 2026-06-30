@@ -1246,35 +1246,39 @@ const WishlistDrawer = ({open,onClose,wishlist,onRemove,onAddToCart}) => {
   );
 };
 
-// ── Hero 3D carousel — helpers ───────────────────────────────────────────────
-// Picks 5-7 real, already-loaded products to showcase in the rotating hero.
-// Prioritizes new arrivals and sale items (most "showable"), then rating, and
-// degrades gracefully — fewer items, or none at all — if the catalog is thin
-// or still loading, instead of ever throwing.
+// ══════════════════════════════════════════════════════════════════════════════
+// HERO — 3D Premium Scene v3
+// Features: rotating product ring · glass podium · cursor spotlight ·
+//           ambient color sync · gold particles · staggered entrance ·
+//           sheen sweep · camera breathing · scroll cinematic exit ·
+//           gyroscope tilt for mobile
+// Presentation-layer only — no new deps, no routing/API/state changes.
+// ══════════════════════════════════════════════════════════════════════════════
+
 const HERO_MAX = 7;
+const HERO_ROTATE_MS = 7000;
+const HERO_RADIUS = "clamp(145px, 20vw, 320px)";
+
+// ── Product picker ────────────────────────────────────────────────────────────
 const pickHeroProducts = (products) => {
   const dp = (products || []).map(normalizeProduct).filter(p => p.image_url);
-  const scored = dp
+  return dp
     .map(p => ({ p, score: (isNewArrival(p) ? 3 : 0) + (p.is_sale ? 2 : 0) + (Number(p.rating) || 0) * .5 }))
-    .sort((a, b) => b.score - a.score);
-  return scored.slice(0, HERO_MAX).map(s => s.p);
+    .sort((a, b) => b.score - a.score)
+    .slice(0, HERO_MAX)
+    .map(s => s.p);
 };
 
-// Shortest hop-distance between two indices on an N-item ring (0 = active).
+// Shortest arc distance on a ring of n items
 const ringDist = (i, active, n) => { const d = Math.abs(i - active); return Math.min(d, n - d); };
 
-// Parses a stat string like "10K+" or "4.9★" into {num, suffix} so it can be
-// counted upward and re-rendered with its original formatting intact.
+// ── Stat counter (counting animation, owns its own tiny state) ────────────────
 const parseStat = (str) => {
   const m = String(str).match(/^([\d.]+)(.*)$/);
   if (!m) return { num: 0, suffix: str, dec: 0 };
   return { num: parseFloat(m[1]), suffix: m[2], dec: m[1].includes(".") ? 1 : 0 };
 };
-
 const HERO_STATS = [{ v: "500+", l: "Products" }, { v: "10K+", l: "Customers" }, { v: "4.9★", l: "Rating" }];
-
-// Counts a single stat upward once it scrolls into view. Owns its own tiny
-// bit of state so this is the only thing that re-renders while counting.
 const HeroStat = ({ stat, inView }) => {
   const { num, suffix, dec } = useMemo(() => parseStat(stat.v), [stat.v]);
   const [val, setVal] = useState(0);
@@ -1282,13 +1286,12 @@ const HeroStat = ({ stat, inView }) => {
   useEffect(() => {
     if (!inView || started.current) return;
     started.current = true;
-    const start = performance.now(), dur = 1300;
+    const t0 = performance.now(), dur = 1400;
     let raf;
     const tick = (t) => {
-      const p = Math.min(1, (t - start) / dur);
-      const eased = 1 - Math.pow(1 - p, 3);
-      const mult = 10 ** dec;
-      setVal(Math.round(num * eased * mult) / mult);
+      const p = Math.min(1, (t - t0) / dur);
+      const e = 1 - Math.pow(1 - p, 3);
+      setVal(Math.round(num * e * 10 ** dec) / 10 ** dec);
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1296,214 +1299,489 @@ const HeroStat = ({ stat, inView }) => {
   }, [inView, num, dec]);
   return (
     <div>
-      <div style={{fontFamily:"var(--fd)",fontSize:22,fontWeight:300,color:"var(--gold)"}}>{dec ? val.toFixed(1) : val}{suffix}</div>
-      <div style={{fontSize:10,color:"rgba(255,255,255,.55)",letterSpacing:".08em",textTransform:"uppercase",marginTop:3}}>{stat.l}</div>
+      <div style={{ fontFamily: "var(--fd)", fontSize: 22, fontWeight: 300, color: "var(--gold)" }}>
+        {dec ? val.toFixed(1) : val}{suffix}
+      </div>
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,.5)", letterSpacing: ".1em", textTransform: "uppercase", marginTop: 3 }}>
+        {stat.l}
+      </div>
     </div>
   );
 };
 
-const HERO_ROTATE_MS = 7000;
+// ── Dominant-color sampler (canvas, 1×1, CORS-safe) ──────────────────────────
+const sampleColor = (url, cb) => {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = 1;
+      c.getContext("2d").drawImage(img, 0, 0, 1, 1);
+      const [r, g, b] = c.getContext("2d").getImageData(0, 0, 1, 1).data;
+      // Blend 35% sampled + 65% gold so the scene never goes garish
+      cb({
+        r: Math.round(r * .35 + 201 * .65),
+        g: Math.round(g * .35 + 168 * .65),
+        b: Math.round(b * .35 + 76  * .65),
+      });
+    } catch { /* CORS blocked — keep previous color */ }
+  };
+  img.src = url;
+};
 
-// ── Hero Section — 3D rotating product carousel ─────────────────────────────
-// Presentation-layer only: reads the same `products` already loaded for the
-// rest of the portal and the same `onQuickView`/`onShopNow` handlers other
-// sections already use — no new routing, API calls, or state architecture.
-const HeroSection = ({onShopNow,products,onQuickView}) => {
-  const {theme}=useTheme();
-  const heroProducts=useMemo(()=>pickHeroProducts(products),[products]);
-  const n=heroProducts.length;
-  const [active,setActive]=useState(0);
-  const [paused,setPaused]=useState(false);
-  const activeProduct=n>0?heroProducts[Math.min(active,n-1)]:null;
+// ── Hero Section ──────────────────────────────────────────────────────────────
+const HeroSection = ({ onShopNow, products, onQuickView }) => {
+  const { theme } = useTheme();
+  const heroProducts = useMemo(() => pickHeroProducts(products), [products]);
+  const n = heroProducts.length;
+  const [active, setActive]     = useState(0);
+  const [paused, setPaused]     = useState(false);
+  const [entered, setEntered]   = useState(false);   // gates staggered entrance
+  const [sheenKey, setSheenKey] = useState(0);        // increments to re-trigger sheen
+  const [ambCol, setAmbCol]     = useState({ r: 201, g: 168, b: 76 }); // ambient color, starts gold
 
-  // Keep the active index in range if the catalog changes under us
-  useEffect(()=>{ if(active>=n&&n>0) setActive(0); },[n,active]);
+  const activeProduct = n > 0 ? heroProducts[Math.min(active, n - 1)] : null;
+  const discount      = activeProduct ? getDiscountInfo(activeProduct) : null;
+  const rgb           = `${ambCol.r},${ambCol.g},${ambCol.b}`;
 
-  // Auto-advance every 6-8s, paused while a dot has keyboard focus
-  useEffect(()=>{
-    if(n<2||paused) return;
-    const id=setInterval(()=>setActive(i=>(i+1)%n),HERO_ROTATE_MS);
-    return ()=>clearInterval(id);
-  },[n,paused]);
+  const reduceMotion = useMemo(() =>
+    typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches, []);
 
-  const reduceMotion=useMemo(()=>typeof window!=="undefined"&&!!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches,[]);
+  // ── Staggered entrance — fire once on mount ─────────────────────────────────
+  useEffect(() => { const t = setTimeout(() => setEntered(true), 80); return () => clearTimeout(t); }, []);
 
-  // Subtle mouse tilt — driven entirely by motion values so it never triggers
-  // a React re-render. Ignored for touch/pen so it can't fight touch scrolling.
-  const rawTiltX=useMotionValue(0), rawTiltY=useMotionValue(0);
-  const tiltX=useSpring(rawTiltX,{stiffness:50,damping:14,mass:.6});
-  const tiltY=useSpring(rawTiltY,{stiffness:50,damping:14,mass:.6});
-  const onStageMove=useCallback((e)=>{
-    if(reduceMotion||e.pointerType!=="mouse") return;
-    const r=e.currentTarget.getBoundingClientRect();
-    rawTiltY.set(((e.clientX-r.left)/r.width-.5)*16);
-    rawTiltX.set(-((e.clientY-r.top)/r.height-.5)*11);
-  },[reduceMotion,rawTiltX,rawTiltY]);
-  const onStageLeave=useCallback(()=>{ rawTiltX.set(0); rawTiltY.set(0); },[rawTiltX,rawTiltY]);
+  // ── Auto-advance ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (n < 2 || paused) return;
+    const id = setInterval(() => setActive(i => (i + 1) % n), HERO_ROTATE_MS);
+    return () => clearInterval(id);
+  }, [n, paused]);
 
-  // Ambient gold particles — generated once, deterministic, never regenerated
-  const particles=useMemo(()=>Array.from({length:16},(_,i)=>({
-    id:i, x:5+((i*37)%90), y:8+((i*53)%84), size:2+(i%3),
-    dur:5+(i%5)*1.3, delay:(i%7)*.4, op:.25+(i%4)*.12,
-  })),[]);
+  useEffect(() => { if (active >= n && n > 0) setActive(0); }, [n, active]);
 
-  const step=n>0?360/n:0;
-  const radius="clamp(150px, 21vw, 330px)";
+  // ── Ambient color — sampled from the active product image ───────────────────
+  useEffect(() => {
+    if (!activeProduct?.image_url || reduceMotion) return;
+    sampleColor(activeProduct.image_url, setAmbCol);
+  }, [activeProduct?.image_url, reduceMotion]);
 
-  const statsRef=useRef(null);
-  const statsInView=useInView(statsRef,{once:true,margin:"-40px"});
+  // ── Sheen — re-triggers a few seconds after each product change ─────────────
+  useEffect(() => {
+    if (reduceMotion) return;
+    const t = setTimeout(() => setSheenKey(k => k + 1), 1600);
+    return () => clearTimeout(t);
+  }, [active, reduceMotion]);
 
-  const discount=activeProduct?getDiscountInfo(activeProduct):null;
+  // ── Motion values for tilt + spotlight (never trigger React re-renders) ─────
+  const rawTiltX = useMotionValue(0), rawTiltY = useMotionValue(0);
+  const tiltX    = useSpring(rawTiltX, { stiffness: 48, damping: 14, mass: .6 });
+  const tiltY    = useSpring(rawTiltY, { stiffness: 48, damping: 14, mass: .6 });
+  const rawSpotX = useMotionValue(72),  rawSpotY = useMotionValue(44);
+  const spotX    = useSpring(rawSpotX, { stiffness: 55, damping: 18 });
+  const spotY    = useSpring(rawSpotY, { stiffness: 55, damping: 18 });
 
+  // Cursor spotlight — derived background string, GPU-composited via opacity layer
+  const spotBg = useTransform(
+    [spotX, spotY],
+    ([x, y]) => `radial-gradient(520px circle at ${x}% ${y}%, rgba(255,235,160,.10) 0%, transparent 68%)`
+  );
+
+  const onStageMove = useCallback((e) => {
+    if (reduceMotion) return;
+    const r  = e.currentTarget.getBoundingClientRect();
+    const nx = (e.clientX - r.left) / r.width;
+    const ny = (e.clientY - r.top)  / r.height;
+    rawSpotX.set(nx * 100);
+    rawSpotY.set(ny * 100);
+    if (e.pointerType !== "mouse") return;   // no tilt on touch
+    rawTiltY.set((nx - .5) * 17);
+    rawTiltX.set(-(ny - .5) * 11);
+  }, [reduceMotion, rawTiltX, rawTiltY, rawSpotX, rawSpotY]);
+
+  const onStageLeave = useCallback(() => {
+    rawTiltX.set(0); rawTiltY.set(0);
+    rawSpotX.set(72); rawSpotY.set(44);
+  }, [rawTiltX, rawTiltY, rawSpotX, rawSpotY]);
+
+  // ── Gyroscope tilt (mobile) ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (reduceMotion || typeof window === "undefined") return;
+    const handler = (e) => {
+      if (e.gamma == null) return;
+      rawTiltY.set(Math.max(-14, Math.min(14, e.gamma  * .38)));
+      rawTiltX.set(Math.max(-9,  Math.min(9,  (e.beta - 45) * .28)));
+    };
+    const attach = async () => {
+      // iOS 13+ requires explicit permission
+      if (typeof DeviceOrientationEvent !== "undefined" &&
+          typeof DeviceOrientationEvent.requestPermission === "function") {
+        try {
+          const grant = await DeviceOrientationEvent.requestPermission();
+          if (grant !== "granted") return;
+        } catch { return; }
+      }
+      window.addEventListener("deviceorientation", handler, { passive: true });
+    };
+    attach();
+    return () => window.removeEventListener("deviceorientation", handler);
+  }, [reduceMotion, rawTiltX, rawTiltY]);
+
+  // ── Scroll-based cinematic exit ─────────────────────────────────────────────
+  const sectionRef  = useRef(null);
+  const { scrollYProgress } = useScroll({ target: sectionRef, offset: ["start start", "end start"] });
+  const exitScale   = useTransform(scrollYProgress, [0, 1],   [1,    .80]);
+  const exitOpacity = useTransform(scrollYProgress, [0, .70], [1,    0  ]);
+  const exitY       = useTransform(scrollYProgress, [0, 1],   [0,    -70]);
+  const exitBlur    = useTransform(scrollYProgress, [0, .8],  [0,    16 ]);
+  // Convert blur number → CSS string for the inner wrapper
+  const exitFilter  = useTransform(exitBlur, v => `blur(${v}px)`);
+
+  // ── Particles — deterministic, never regenerated ────────────────────────────
+  const particles = useMemo(() => Array.from({ length: 22 }, (_, i) => ({
+    id: i,
+    x:   3 + ((i * 37) % 95),
+    y:   4 + ((i * 53) % 92),
+    sz:  1.4 + (i % 3) * .9,
+    dur: 4.8 + (i % 5) * 1.3,
+    del: (i % 7) * .42,
+    op:  .20 + (i % 4) * .12,
+  })), []);
+
+  const step     = n > 0 ? 360 / n : 0;
+  const statsRef = useRef(null);
+  const statsInView = useInView(statsRef, { once: true, margin: "-40px" });
+
+  // ── Render ──────────────────────────────────────────────────────────────────
   return (
-    <section
-      style={{position:"relative",minHeight:"100vh",overflow:"hidden",background:"#0a0a0a",display:"flex",alignItems:"center"}}
+    <section ref={sectionRef}
+      style={{ position: "relative", minHeight: "100vh", overflow: "hidden", background: "#080808" }}
       onPointerMove={onStageMove} onPointerLeave={onStageLeave}
     >
-      {/* Layer 1 — blurred boutique background, crossfades with the active product */}
+      {/* ── L0 Blurred product background (crossfades on product change) ── */}
       <AnimatePresence>
-        {activeProduct?.image_url&&(
-          <motion.div key={activeProduct.id} initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}
-            transition={{duration:1.3,ease:"easeInOut"}} style={{position:"absolute",inset:0,zIndex:0}}>
+        {activeProduct?.image_url && (
+          <motion.div key={activeProduct.id}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 1.5, ease: "easeInOut" }}
+            style={{ position: "absolute", inset: 0, zIndex: 0 }}>
             <img src={activeProduct.image_url} alt="" aria-hidden="true"
-              style={{width:"100%",height:"100%",objectFit:"cover",transform:"scale(1.15)",filter:"blur(42px) saturate(1.2) brightness(.5)"}}/>
+              style={{ width: "100%", height: "100%", objectFit: "cover",
+                       transform: "scale(1.18)", filter: "blur(52px) saturate(1.4) brightness(.38)" }} />
           </motion.div>
         )}
       </AnimatePresence>
-      {!activeProduct&&<div style={{position:"absolute",inset:0,background:"radial-gradient(circle at 70% 50%, #1c1a14, #0a0a0a)"}}/>}
+      {!activeProduct && (
+        <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 70% 48%, #1c1a10, #080808)" }} />
+      )}
 
-      {/* Layer 2 — luxury dark overlay (slightly lighter in light theme; text stays white either way for legibility over the photo) */}
-      <div aria-hidden="true" style={{position:"absolute",inset:0,zIndex:1,
-        background: theme==="light"
-          ? "linear-gradient(110deg, rgba(0,0,0,.66) 32%, rgba(0,0,0,.28) 75%, rgba(0,0,0,.4) 100%)"
-          : "linear-gradient(110deg, rgba(0,0,0,.82) 32%, rgba(0,0,0,.35) 75%, rgba(0,0,0,.5) 100%)"}}/>
-      <div aria-hidden="true" style={{position:"absolute",inset:0,zIndex:1,background:"radial-gradient(circle at 76% 46%, rgba(201,168,76,.12), transparent 62%)"}}/>
+      {/* ── L1 Dark overlay ── */}
+      <div aria-hidden="true" style={{
+        position: "absolute", inset: 0, zIndex: 1,
+        background: theme === "light"
+          ? "linear-gradient(112deg, rgba(0,0,0,.70) 30%, rgba(0,0,0,.28) 72%, rgba(0,0,0,.44) 100%)"
+          : "linear-gradient(112deg, rgba(0,0,0,.86) 30%, rgba(0,0,0,.36) 72%, rgba(0,0,0,.54) 100%)",
+      }} />
 
-      {/* Layer 3 — ambient gold particles */}
-      {!reduceMotion&&(
-        <div aria-hidden="true" style={{position:"absolute",inset:0,zIndex:2,pointerEvents:"none"}}>
-          {particles.map(p=>(
+      {/* ── L2 Ambient color glow — transitions with the product ── */}
+      <motion.div aria-hidden="true"
+        animate={{ background: `radial-gradient(ellipse 68% 58% at 76% 46%, rgba(${rgb},.20), transparent 66%)` }}
+        transition={{ duration: 1.9, ease: "easeInOut" }}
+        style={{ position: "absolute", inset: 0, zIndex: 2, pointerEvents: "none" }}
+      />
+
+      {/* ── L3 Cursor spotlight — GPU motion value, zero re-renders ── */}
+      {!reduceMotion && (
+        <motion.div aria-hidden="true"
+          style={{ position: "absolute", inset: 0, zIndex: 3, pointerEvents: "none", background: spotBg }}
+        />
+      )}
+
+      {/* ── L4 Gold particles — tinted toward ambient color ── */}
+      {!reduceMotion && (
+        <div aria-hidden="true" style={{ position: "absolute", inset: 0, zIndex: 4, pointerEvents: "none" }}>
+          {particles.map(p => (
             <motion.span key={p.id}
-              style={{position:"absolute",left:`${p.x}%`,top:`${p.y}%`,width:p.size,height:p.size,borderRadius:"50%",background:"var(--gold-l)",boxShadow:"0 0 6px 1px var(--gg)"}}
-              animate={{y:[0,-24,0],opacity:[p.op*.3,p.op,p.op*.3]}}
-              transition={{duration:p.dur,repeat:Infinity,ease:"easeInOut",delay:p.delay}}/>
+              style={{
+                position: "absolute", left: `${p.x}%`, top: `${p.y}%`,
+                width: p.sz, height: p.sz, borderRadius: "50%",
+                background: `rgba(${rgb},.95)`,
+                boxShadow: `0 0 7px 2px rgba(${rgb},.42)`,
+              }}
+              animate={{ y: [0, -30, 0], opacity: [p.op * .28, p.op, p.op * .28], scale: [1, 1.5, 1] }}
+              transition={{ duration: p.dur, repeat: Infinity, ease: "easeInOut", delay: p.del }}
+            />
           ))}
         </div>
       )}
 
-      {/* Layer 4 — content: hero copy (left) + rotating carousel (right), synced to the active product */}
-      <div style={{position:"relative",zIndex:4,width:"100%",maxWidth:1400,margin:"0 auto",padding:"90px 6vw 70px",
-        display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",gap:40}}>
+      {/* ── L5 Scene content — scroll exit applied here so dots stay put ── */}
+      <motion.div style={{
+        position: "relative", zIndex: 5,
+        scale: exitScale, opacity: exitOpacity, y: exitY, filter: exitFilter,
+        display: "flex", alignItems: "center", minHeight: "100vh",
+      }}>
+        <div style={{
+          width: "100%", maxWidth: 1400, margin: "0 auto",
+          padding: "90px 6vw 80px",
+          display: "flex", flexWrap: "wrap", alignItems: "center",
+          justifyContent: "space-between", gap: 40,
+        }}>
 
-        <div style={{flex:"1 1 440px",maxWidth:560}}>
-          <AnimatePresence mode="wait">
-            <motion.div key={activeProduct?.id||"empty"} initial={{opacity:0,y:24}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-16}} transition={{duration:.55,ease:"easeOut"}}>
-              <span style={{fontSize:11,letterSpacing:".2em",textTransform:"uppercase",color:"var(--gold)",fontWeight:600,display:"block",marginBottom:16}}>
-                ✦ {activeProduct?(activeProduct.category||"Featured"):"Villa Vogue"}
-              </span>
-              <h1 style={{fontFamily:"var(--fd)",fontSize:"clamp(36px,5.6vw,72px)",fontWeight:300,lineHeight:1.1,color:"#fff",marginBottom:18}}>
-                {activeProduct
-                  ? <>Discover<br/><em style={{fontStyle:"italic",color:"var(--gold)"}}>{activeProduct.name}</em></>
-                  : <>Effortless<br/><em style={{fontStyle:"italic",color:"var(--gold)"}}>Luxury Style</em></>}
-              </h1>
-              <p style={{fontSize:15,color:"rgba(255,255,255,.75)",lineHeight:1.8,marginBottom:22,maxWidth:420}}>
-                {activeProduct?.description||"Curated pieces from Kampala's most trusted fashion destination — quality, elegance and confidence in every stitch."}
-              </p>
-              {activeProduct&&(
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:28,flexWrap:"wrap"}}>
-                  <Stars r={activeProduct.rating||4.2} count={activeProduct.review_count}/>
-                  <span style={{fontFamily:"var(--fd)",fontSize:22,color:"var(--gold)",fontWeight:500}}>UGX {Number(activeProduct.price).toLocaleString()}</span>
-                  {discount&&<span style={{fontSize:13,color:"rgba(255,255,255,.45)",textDecoration:"line-through"}}>UGX {discount.original.toLocaleString()}</span>}
-                  {discount&&<span className="pct-badge">-{discount.percent}%</span>}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+          {/* ── Left: Hero copy ── */}
+          <div style={{ flex: "1 1 440px", maxWidth: 560 }}>
+            <AnimatePresence mode="wait">
+              <motion.div key={activeProduct?.id || "fallback"}
+                initial={{ opacity: 0, y: 26 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -18 }}
+                transition={{ duration: .55, ease: "easeOut" }}>
 
-          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-            <motion.button className="bg" onClick={onShopNow} whileHover={{scale:1.04}} whileTap={{scale:.97}}
-              style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em"}}>Shop Collection</motion.button>
-            <motion.button className="bgh" onClick={()=>(activeProduct&&onQuickView?onQuickView(activeProduct):onShopNow?.())}
-              whileHover={{scale:1.04}} whileTap={{scale:.97}}
-              style={{padding:"14px 30px",fontSize:13,letterSpacing:".06em",color:"#fff",borderColor:"rgba(255,255,255,.35)"}}>
-              {activeProduct?"Quick View":"View All"}
-            </motion.button>
-          </div>
+                <motion.span
+                  animate={{ color: `rgb(${rgb})` }} transition={{ duration: 1.7 }}
+                  style={{ fontSize: 11, letterSpacing: ".2em", textTransform: "uppercase",
+                           fontWeight: 600, display: "block", marginBottom: 16 }}>
+                  ✦ {activeProduct ? (activeProduct.category || "Featured") : "Villa Vogue"}
+                </motion.span>
 
-          {/* Stats — count upward once visible */}
-          <div ref={statsRef} style={{display:"flex",gap:28,marginTop:44,paddingTop:28,borderTop:"1px solid rgba(255,255,255,.15)"}}>
-            {HERO_STATS.map(s=><HeroStat key={s.v} stat={s} inView={statsInView}/>)}
-          </div>
-        </div>
+                <h1 style={{ fontFamily: "var(--fd)", fontSize: "clamp(36px,5.5vw,70px)",
+                             fontWeight: 300, lineHeight: 1.1, color: "#fff", marginBottom: 18 }}>
+                  {activeProduct
+                    ? <>Discover<br /><em style={{ fontStyle: "italic", color: `rgb(${rgb})` }}>{activeProduct.name}</em></>
+                    : <>Effortless<br /><em style={{ fontStyle: "italic", color: "var(--gold)" }}>Luxury Style</em></>}
+                </h1>
 
-        {/* 3D rotating product carousel */}
-        {n>0&&(
-          <div style={{flex:"1 1 320px",display:"flex",justifyContent:"center",perspective:"1300px"}}>
-            <motion.div style={{position:"relative",width:"clamp(200px,26vw,360px)",height:"clamp(240px,32vw,440px)",transformStyle:"preserve-3d",rotateX:tiltX,rotateY:tiltY}}>
-              <motion.div style={{position:"absolute",inset:0,transformStyle:"preserve-3d"}}
-                animate={{rotateY:-active*step}} transition={{type:"spring",stiffness:40,damping:16,mass:1.1}}>
-                {heroProducts.map((p,i)=>{
-                  const dist=ringDist(i,active,n);
-                  const tier=dist===0?"active":dist===1?"near":"far";
-                  return (
-                    <div key={p.id} style={{position:"absolute",inset:0,transform:`rotateY(${i*step}deg) translateZ(${radius})`,transformStyle:"preserve-3d"}}>
-                      <motion.div
-                        animate={{
-                          scale: tier==="active"?1:tier==="near"?.72:.5,
-                          opacity: tier==="active"?1:tier==="near"?.5:.22,
-                          y: tier==="active"?-8:0,
-                          filter: tier==="active"?"blur(0px) brightness(1.1) saturate(1.08)":tier==="near"?"blur(2.5px) brightness(.62) saturate(.85)":"blur(5px) brightness(.42) saturate(.7)",
-                        }}
-                        transition={{type:"spring",stiffness:110,damping:18}}
-                        style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}
-                      >
-                        <motion.div
-                          animate={reduceMotion?{}:{y:[0,-10,0]}}
-                          transition={{duration:4+(i%4)*.5,repeat:Infinity,ease:"easeInOut",delay:i*.3}}
-                          style={{position:"relative",width:"min(48vw,230px)",aspectRatio:"3/4"}}
-                        >
-                          <div style={{width:"100%",height:"100%",borderRadius:20,overflow:"hidden",position:"relative",background:"var(--bt)",
-                            boxShadow: tier==="active"?"0 30px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(201,168,76,.55), 0 0 44px 6px rgba(201,168,76,.32)":"0 16px 34px rgba(0,0,0,.4)"}}>
-                            <img src={p.image_url} alt={p.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                            <div aria-hidden="true" style={{position:"absolute",inset:0,background:"linear-gradient(135deg, rgba(255,255,255,.16), transparent 45%)"}}/>
-                          </div>
-                          {/* Soft reflection beneath the card */}
-                          <div aria-hidden="true" style={{position:"absolute",top:"100%",left:0,right:0,height:"38%",
-                            backgroundImage:`url(${p.image_url})`,backgroundSize:"cover",backgroundPosition:"center",
-                            transform:"scaleY(-1)",opacity:tier==="active"?.22:.08,filter:"blur(2px)",
-                            WebkitMaskImage:"linear-gradient(to bottom, rgba(0,0,0,.5), transparent)",
-                            maskImage:"linear-gradient(to bottom, rgba(0,0,0,.5), transparent)"}}/>
-                        </motion.div>
-                      </motion.div>
-                    </div>
-                  );
-                })}
+                <p style={{ fontSize: 15, color: "rgba(255,255,255,.74)", lineHeight: 1.8,
+                            marginBottom: 22, maxWidth: 420 }}>
+                  {activeProduct?.description ||
+                    "Curated pieces from Kampala's most trusted fashion destination — quality, elegance and confidence in every stitch."}
+                </p>
+
+                {activeProduct && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28, flexWrap: "wrap" }}>
+                    <Stars r={activeProduct.rating || 4.2} count={activeProduct.review_count} />
+                    <span style={{ fontFamily: "var(--fd)", fontSize: 22, color: `rgb(${rgb})`, fontWeight: 500 }}>
+                      UGX {Number(activeProduct.price).toLocaleString()}
+                    </span>
+                    {discount && (
+                      <span style={{ fontSize: 13, color: "rgba(255,255,255,.42)", textDecoration: "line-through" }}>
+                        UGX {discount.original.toLocaleString()}
+                      </span>
+                    )}
+                    {discount && <span className="pct-badge">-{discount.percent}%</span>}
+                  </div>
+                )}
               </motion.div>
-            </motion.div>
-          </div>
-        )}
-      </div>
+            </AnimatePresence>
 
-      {/* Screen-reader announcement of the active product (visually hidden) */}
-      <span aria-live="polite" style={{position:"absolute",width:1,height:1,overflow:"hidden",clip:"rect(0,0,0,0)"}}>
-        {activeProduct?`Now featuring ${activeProduct.name}, UGX ${Number(activeProduct.price).toLocaleString()}`:""}
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <motion.button className="bg" onClick={onShopNow}
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: .97 }}
+                style={{ padding: "14px 30px", fontSize: 13, letterSpacing: ".06em" }}>
+                Shop Collection
+              </motion.button>
+              <motion.button className="bgh"
+                onClick={() => activeProduct && onQuickView ? onQuickView(activeProduct) : onShopNow?.()}
+                whileHover={{ scale: 1.04 }} whileTap={{ scale: .97 }}
+                style={{ padding: "14px 30px", fontSize: 13, letterSpacing: ".06em",
+                         color: "#fff", borderColor: "rgba(255,255,255,.34)" }}>
+                {activeProduct ? "Quick View" : "View All"}
+              </motion.button>
+            </div>
+
+            <div ref={statsRef}
+              style={{ display: "flex", gap: 28, marginTop: 44, paddingTop: 28,
+                       borderTop: "1px solid rgba(255,255,255,.14)" }}>
+              {HERO_STATS.map(s => <HeroStat key={s.v} stat={s} inView={statsInView} />)}
+            </div>
+          </div>
+
+          {/* ── Right: 3D ring scene ── */}
+          {n > 0 && (
+            <div style={{ flex: "1 1 320px", display: "flex", justifyContent: "center", perspective: "1500px" }}>
+
+              {/* Camera breathing — slow scale pulse on the outermost container */}
+              <motion.div
+                animate={reduceMotion ? {} : { scale: [1, 1.019, 1, 1.011, 1] }}
+                transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
+                style={{
+                  position: "relative",
+                  width:  "clamp(210px, 27vw, 370px)",
+                  height: "clamp(250px, 33vw, 450px)",
+                  transformStyle: "preserve-3d",
+                }}
+              >
+                {/* Tilt wrapper — separate so breathing and tilt compose cleanly */}
+                <motion.div style={{
+                  position: "absolute", inset: 0,
+                  transformStyle: "preserve-3d",
+                  rotateX: tiltX, rotateY: tiltY,
+                }}>
+
+                  {/* ── Glass podium ── */}
+                  <div aria-hidden="true" style={{
+                    position: "absolute", bottom: -32, left: "50%", transform: "translateX(-50%)",
+                    width: "170%", height: 48, borderRadius: "50%",
+                    background: "linear-gradient(180deg, rgba(255,255,255,.14) 0%, rgba(255,255,255,.04) 100%)",
+                    backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+                    border: "1px solid rgba(255,255,255,.20)",
+                    boxShadow: `0 10px 52px rgba(${rgb},.26), inset 0 1px 0 rgba(255,255,255,.28)`,
+                  }} />
+                  {/* Podium floor glow */}
+                  <div aria-hidden="true" style={{
+                    position: "absolute", bottom: -58, left: "50%", transform: "translateX(-50%)",
+                    width: "130%", height: 36,
+                    background: `radial-gradient(ellipse, rgba(${rgb},.40) 0%, transparent 72%)`,
+                    filter: "blur(10px)",
+                  }} />
+
+                  {/* ── Spinning ring ── */}
+                  <motion.div
+                    style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d" }}
+                    animate={{ rotateY: -active * step }}
+                    transition={{ type: "spring", stiffness: 36, damping: 15, mass: 1.2 }}
+                  >
+                    {heroProducts.map((p, i) => {
+                      const dist   = ringDist(i, active, n);
+                      const isAct  = dist === 0;
+                      const isNear = dist === 1;
+                      return (
+                        <div key={p.id} style={{
+                          position: "absolute", inset: 0,
+                          transform: `rotateY(${i * step}deg) translateZ(${HERO_RADIUS})`,
+                          transformStyle: "preserve-3d",
+                        }}>
+                          {/* Depth layer — scale / opacity / blur by tier */}
+                          <motion.div
+                            initial={entered ? false : { opacity: 0, scale: .3, y: 50 }}
+                            animate={{
+                              scale:   isAct ? 1 : isNear ? .69 : .46,
+                              opacity: isAct ? 1 : isNear ? .46 : .18,
+                              y:       isAct ? -12 : 0,
+                              filter:  isAct
+                                ? "blur(0px) brightness(1.14) saturate(1.12)"
+                                : isNear
+                                  ? "blur(2.5px) brightness(.58) saturate(.78)"
+                                  : "blur(6px) brightness(.34) saturate(.60)",
+                            }}
+                            transition={{ type: "spring", stiffness: 95, damping: 17,
+                                          delay: entered ? 0 : i * .07 }}
+                            onClick={() => !isAct && setActive(i)}
+                            style={{
+                              position: "absolute", inset: 0,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              cursor: isAct ? "default" : "pointer",
+                            }}
+                          >
+                            {/* Float bob — each item has a slightly different cadence */}
+                            <motion.div
+                              animate={reduceMotion ? {} : { y: [0, -13, 0] }}
+                              transition={{ duration: 4 + (i % 4) * .65, repeat: Infinity,
+                                            ease: "easeInOut", delay: i * .38 }}
+                              style={{ position: "relative", width: "min(46vw, 220px)", aspectRatio: "3/4" }}
+                            >
+                              {/* Card shell */}
+                              <div style={{
+                                width: "100%", height: "100%", borderRadius: 22,
+                                overflow: "hidden", position: "relative", background: "var(--bt)",
+                                boxShadow: isAct
+                                  ? `0 38px 76px rgba(0,0,0,.58), 0 0 0 1.5px rgba(${rgb},.65), 0 0 58px 10px rgba(${rgb},.30)`
+                                  : "0 18px 36px rgba(0,0,0,.42)",
+                              }}>
+                                <img src={p.image_url} alt={p.name}
+                                  loading={isAct ? "eager" : "lazy"}
+                                  style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+
+                                {/* ── Sheen sweep on the active card ── */}
+                                {isAct && !reduceMotion && (
+                                  <motion.div key={sheenKey} aria-hidden="true"
+                                    style={{
+                                      position: "absolute", inset: 0, pointerEvents: "none",
+                                      background: "linear-gradient(108deg, transparent 28%, rgba(255,255,255,.42) 50%, transparent 72%)",
+                                      backgroundSize: "200% 100%",
+                                    }}
+                                    initial={{ backgroundPosition: "200% 0" }}
+                                    animate={{ backgroundPosition: "-200% 0" }}
+                                    transition={{ duration: .95, ease: "easeInOut" }}
+                                  />
+                                )}
+
+                                {/* Surface light accent */}
+                                <div aria-hidden="true" style={{
+                                  position: "absolute", inset: 0, pointerEvents: "none",
+                                  background: "linear-gradient(138deg, rgba(255,255,255,.19), transparent 46%)",
+                                }} />
+                              </div>
+
+                              {/* ── Reflection ── */}
+                              <div aria-hidden="true" style={{
+                                position: "absolute", top: "100%", left: 0, right: 0, height: "42%",
+                                backgroundImage: `url(${p.image_url})`,
+                                backgroundSize: "cover", backgroundPosition: "center",
+                                transform: "scaleY(-1)",
+                                opacity: isAct ? .26 : .07,
+                                filter: "blur(3px)",
+                                WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,.55), transparent)",
+                                maskImage:        "linear-gradient(to bottom, rgba(0,0,0,.55), transparent)",
+                              }} />
+
+                              {/* ── 3D floating price chip on active product ── */}
+                              {isAct && activeProduct && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                                  transition={{ delay: .3 }}
+                                  style={{
+                                    position: "absolute", bottom: -18, left: "50%", transform: "translateX(-50%)",
+                                    background: "rgba(4,4,4,.78)",
+                                    backdropFilter: "blur(14px)", WebkitBackdropFilter: "blur(14px)",
+                                    border: `1px solid rgba(${rgb},.58)`,
+                                    borderRadius: 22, padding: "5px 16px", whiteSpace: "nowrap",
+                                    fontSize: 12, fontWeight: 600, color: `rgb(${rgb})`,
+                                    boxShadow: `0 4px 22px rgba(${rgb},.32)`,
+                                  }}>
+                                  UGX {Number(activeProduct.price).toLocaleString()}
+                                </motion.div>
+                              )}
+                            </motion.div>
+                          </motion.div>
+                        </div>
+                      );
+                    })}
+                  </motion.div>
+                </motion.div>
+              </motion.div>
+            </div>
+          )}
+        </div>
+      </motion.div>
+
+      {/* ── Accessible live region ── */}
+      <span aria-live="polite" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0,0,0,0)" }}>
+        {activeProduct ? `Now featuring ${activeProduct.name}, UGX ${Number(activeProduct.price).toLocaleString()}` : ""}
       </span>
 
-      {/* Carousel dots — real buttons, keyboard-focusable, double as manual navigation */}
-      {n>1&&(
-        <div style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",zIndex:5,display:"flex",gap:8}}>
-          {heroProducts.map((p,i)=>(
-            <button key={p.id} onClick={()=>setActive(i)} onFocus={()=>setPaused(true)} onBlur={()=>setPaused(false)}
-              aria-label={`Show ${p.name}`} aria-current={i===active}
-              style={{width:i===active?24:7,height:7,borderRadius:10,background:i===active?"var(--gold)":"rgba(255,255,255,.35)",border:"none",cursor:"pointer",transition:"all .4s",padding:0}}/>
+      {/* ── Dot navigation ── */}
+      {n > 1 && (
+        <div style={{ position: "absolute", bottom: 28, left: "50%", transform: "translateX(-50%)", zIndex: 6, display: "flex", gap: 8 }}>
+          {heroProducts.map((p, i) => (
+            <button key={p.id}
+              onClick={() => setActive(i)}
+              onFocus={() => setPaused(true)}
+              onBlur={() => setPaused(false)}
+              aria-label={`Show ${p.name}`}
+              aria-current={i === active}
+              style={{
+                width: i === active ? 24 : 7, height: 7, borderRadius: 10,
+                background: i === active ? `rgb(${rgb})` : "rgba(255,255,255,.30)",
+                border: "none", cursor: "pointer", transition: "all .42s", padding: 0,
+              }} />
           ))}
         </div>
       )}
 
-      {/* Scroll hint */}
-      <div style={{position:"absolute",bottom:28,right:32,zIndex:5,display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-        <span style={{fontSize:9,letterSpacing:".2em",textTransform:"uppercase",color:"rgba(255,255,255,.4)"}}>Scroll</span>
-        <motion.div style={{width:1,height:32,background:"rgba(255,255,255,.3)"}} animate={{scaleY:[0,1,0]}} transition={{duration:1.8,repeat:Infinity}}/>
+      {/* ── Scroll hint ── */}
+      <div style={{ position: "absolute", bottom: 28, right: 32, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+        <span style={{ fontSize: 9, letterSpacing: ".2em", textTransform: "uppercase", color: "rgba(255,255,255,.36)" }}>Scroll</span>
+        <motion.div style={{ width: 1, height: 32, background: "rgba(255,255,255,.26)" }}
+          animate={{ scaleY: [0, 1, 0] }} transition={{ duration: 1.9, repeat: Infinity }} />
       </div>
     </section>
   );
