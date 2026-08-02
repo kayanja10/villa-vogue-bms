@@ -53,6 +53,11 @@ export default function POS() {
   const [catFilter, setCatFilter] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
   const [step, setStep] = useState('cart');
+  // Mobile-only: cart is a bottom-sheet overlay opened via the sticky
+  // summary bar, since on phones there's no room to show it beside the
+  // product grid. Has no effect at the `lg` breakpoint, where the cart
+  // is always visible as the fixed sidebar it always was.
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
   // ── Barcode scanner detection ──────────────────────────────────────────────
   // USB/Bluetooth barcode scanners work by "typing" the scanned digits very
   // fast (each keystroke under ~30ms apart) and then sending Enter. A human
@@ -145,6 +150,7 @@ export default function POS() {
       setLastOrder(res.data);
       setLastCart([...cart]);
       setStep('success');
+      setMobileCartOpen(false);
       clearCart();
       setDiscountCode('');
       setManualDiscountValue('');
@@ -231,6 +237,7 @@ export default function POS() {
     setLastOrder(offlineResult);
     setLastCart([...cart]);
     setStep('success');
+    setMobileCartOpen(false);
     clearCart();
     setDiscountCode('');
     setManualDiscountValue('');
@@ -278,6 +285,7 @@ export default function POS() {
           setLastOrder(offlineResult);
           setLastCart([...cart]);
           setStep('success');
+          setMobileCartOpen(false);
           clearCart();
           setDiscountCode('');
           setManualDiscountValue('');
@@ -453,7 +461,11 @@ export default function POS() {
                 const inCart = cart.find(c => c.productId === p.id);
                 const outOfStock = p.stock === 0;
                 return (
-                  <button key={p.id} onClick={() => { if (!outOfStock) addToCart(p); else toast.error('Out of stock'); }}
+                  <button key={p.id} onClick={() => {
+                    if (outOfStock) { toast.error('Out of stock'); return; }
+                    addToCart(p);
+                    toast.success(`${p.name} added`, { icon: '🛍️', duration: 1200 });
+                  }}
                     disabled={outOfStock}
                     className={`card p-3 text-left transition-all active:scale-95 relative ${outOfStock ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-md hover:border-[#C9A96E]/30'} ${inCart ? 'border-[#C9A96E] border-2' : ''}`}>
                     {/* Stock badge */}
@@ -487,12 +499,33 @@ export default function POS() {
         </div>
       </div>
 
-      {/* ── RIGHT: Cart ── */}
-      <div className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col card lg:overflow-hidden">
+      {/* Mobile-only sticky cart summary bar — tap to open the full cart.
+          Hidden entirely at lg since the sidebar cart is always visible there. */}
+      {cart.length > 0 && !mobileCartOpen && (
+        <button
+          onClick={() => setMobileCartOpen(true)}
+          className="lg:hidden fixed bottom-4 left-4 right-4 z-40 flex items-center justify-between gap-3 rounded-2xl px-5 py-3.5 font-bold text-sm text-white shadow-xl active:scale-[0.98] transition-all"
+          style={{ background: 'linear-gradient(135deg,#C9A96E,#A8824A)' }}>
+          <span className="flex items-center gap-2">
+            <ShoppingCart size={18} />
+            {cart.length} item{cart.length > 1 ? 's' : ''}
+          </span>
+          <span>UGX {total.toLocaleString()} · View Cart</span>
+        </button>
+      )}
+
+      {/* ── RIGHT: Cart ──
+          Mobile: hidden by default, opens as a full-screen overlay via the
+          sticky "View Cart" bar below. Desktop (lg+): unchanged — always
+          visible as the fixed sidebar, mobileCartOpen has no effect. */}
+      <div className={`${mobileCartOpen ? 'flex' : 'hidden'} lg:flex fixed lg:static inset-0 lg:inset-auto z-50 lg:z-auto w-full lg:w-72 xl:w-80 shrink-0 flex-col card lg:overflow-hidden`}>
 
         {/* Cart header */}
         <div className="p-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
+            <button onClick={() => setMobileCartOpen(false)} className="lg:hidden -ml-1 p-1 text-gray-400 hover:text-gray-600">
+              <X size={18} />
+            </button>
             <span className="font-heading font-semibold text-sm">Cart</span>
             {cart.length > 0 && <span className="text-[10px] bg-[#C9A96E] text-white px-1.5 py-0.5 rounded-full">{cart.length}</span>}
           </div>
