@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
+import { Helmet } from 'react-helmet-async';
 import { io } from 'socket.io-client';
 import { useStore } from './store/useStore';
 import { useSocket } from './hooks/useSocket';
@@ -35,6 +36,11 @@ const queryClient = new QueryClient({
 // VITE_API_URL env var can override (set in Vercel dashboard)
 // Fallback is hardcoded Render URL so it works even without the env var
 const BASE = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
+
+// ─── SEO: canonical site origin ───────────────────────────────────────────────
+// Must match the domain Vercel actually serves (www), not the apex domain
+// that 301-redirects to it — see sitemap.xml.js for the same fix.
+const SITE_URL = 'https://www.villavoguefashion.com';
 
 // ─── Customer Portal Wrapper ─────────────────────────────────────────────────
 function CustomerPortalWrapper() {
@@ -150,15 +156,31 @@ function CustomerPortalWrapper() {
   }, []);
 
   return (
-    <CustomerPortal
-      user={portalUser}
-      products={portalProducts}
-      orders={portalOrders}
-      loading={loading}
-      onLogin={handleLogin}
-      onLogout={handleLogout}
-      onStaffLogin={() => navigate('/login')}
-    />
+    <>
+      {/* SEO: / and /store/* render identical content (see App routes below —
+          /store/* is kept only as a legacy alias for old shared links). Without
+          an explicit canonical tag, Google was crawling both as separate pages
+          with no signal for which to index, producing the "Duplicate without
+          user-selected canonical" issue in Search Console. Pointing both at
+          the same canonical URL (the homepage) resolves that. */}
+      <Helmet>
+        <title>Villa Vogue Fashions | Quality Clothing for Men, Women & Kids in Kampala</title>
+        <meta
+          name="description"
+          content="Shop quality new and second-hand fashion for men, women, and children in Kampala, Uganda. Affordable, stylish clothing with fast WhatsApp ordering."
+        />
+        <link rel="canonical" href={`${SITE_URL}/`} />
+      </Helmet>
+      <CustomerPortal
+        user={portalUser}
+        products={portalProducts}
+        orders={portalOrders}
+        loading={loading}
+        onLogin={handleLogin}
+        onLogout={handleLogout}
+        onStaffLogin={() => navigate('/login')}
+      />
+    </>
   );
 }
 

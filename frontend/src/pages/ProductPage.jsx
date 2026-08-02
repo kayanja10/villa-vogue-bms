@@ -46,7 +46,14 @@ function useProductSeo(product) {
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
     setMeta('property', 'og:type', 'product');
-    setMeta('property', 'og:url', window.location.href);
+    // Strip query params (?fbclid=, ?utm_source=, etc.) for both og:url and
+    // canonical — product links get shared via WhatsApp/social a lot, and
+    // tracking params in the canonical would make Google see the same
+    // product as multiple distinct "duplicate" URLs depending on how it
+    // was shared, instead of one authoritative URL.
+    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+
+    setMeta('property', 'og:url', cleanUrl);
     if (image) setMeta('property', 'og:image', image);
     setMeta('name', 'twitter:card', image ? 'summary_large_image' : 'summary');
     setMeta('name', 'twitter:title', title);
@@ -62,7 +69,7 @@ function useProductSeo(product) {
       canonical.setAttribute('rel', 'canonical');
       document.head.appendChild(canonical);
     }
-    canonical.setAttribute('href', window.location.href);
+    canonical.setAttribute('href', cleanUrl);
 
     return () => {
       document.title = prevTitle;
