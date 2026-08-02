@@ -7,9 +7,15 @@
 // equivalent, zero-extra-infrastructure way to get the same "always
 // up to date" behaviour Next.js's generateSitemaps would give you.
 //
-// URL once deployed: https://villavoguefashion.com/sitemap.xml
-
-const SITE_URL = 'https://villavoguefashion.com';
+// URL once deployed: https://www.villavoguefashion.com/sitemap.xml
+//
+// IMPORTANT: SITE_URL must match your canonical domain exactly (the one
+// Vercel actually serves, not the one that redirects to it). The apex
+// domain (villavoguefashion.com) 301-redirects to www — using the apex
+// here previously caused every single sitemap URL to be flagged by
+// Google Search Console as "Page with redirect", since Googlebot had to
+// follow a redirect on every URL instead of landing directly.
+const SITE_URL = 'https://www.villavoguefashion.com';
 const API_BASE = process.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.com/api';
 
 // XML special characters that must be escaped inside <url> entries —

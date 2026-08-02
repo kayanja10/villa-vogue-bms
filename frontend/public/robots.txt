@@ -9,4 +9,4 @@ Disallow: /dashboard
 Disallow: /login
 Disallow: /api/
 
-Sitemap: https://villavoguefashion.com/sitemap.xml
+Sitemap: https://www.villavoguefashion.com/sitemap.xml
