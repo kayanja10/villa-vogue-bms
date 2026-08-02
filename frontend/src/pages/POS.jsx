@@ -383,10 +383,10 @@ export default function POS() {
 
   // ── MAIN POS ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-[calc(100vh-4rem)] gap-4 animate-fade-in -mx-4 -mt-4 px-4 pt-4">
+    <div className="flex flex-col lg:flex-row lg:h-[calc(100vh-4rem)] gap-4 animate-fade-in -mx-4 -mt-4 px-4 pt-4">
 
       {/* ── LEFT: Product Grid ── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 lg:overflow-hidden">
 
         {/* Search + filters */}
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -442,7 +442,7 @@ export default function POS() {
         )}
 
         {/* Product grid */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 lg:overflow-y-auto">
           {loadingProds && isOnline ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
               {[...Array(10)].map((_, i) => <div key={i} className="card h-28 animate-pulse" />)}
@@ -488,7 +488,7 @@ export default function POS() {
       </div>
 
       {/* ── RIGHT: Cart ── */}
-      <div className="w-72 xl:w-80 shrink-0 flex flex-col card overflow-hidden">
+      <div className="w-full lg:w-72 xl:w-80 shrink-0 flex flex-col card lg:overflow-hidden">
 
         {/* Cart header */}
         <div className="p-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between">
@@ -542,7 +542,7 @@ export default function POS() {
         </div>
 
         {/* Cart items */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+        <div className="flex-1 lg:overflow-y-auto p-3 space-y-2">
           {!cart.length && (
             <div className="flex flex-col items-center justify-center h-full text-gray-400 py-8">
               <ShoppingCart size={36} className="mb-2 opacity-20" />
