@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import path from 'path';
 import { VitePWA } from 'vite-plugin-pwa';
 import prerender from 'vite-plugin-prerender';
-import { getPrerenderRoutes } from './scripts/get-prerender-routes.js';
+import { getPrerenderRoutes } from './scr/get-prerender-routes.js';
 
 const Renderer = prerender.PuppeteerRenderer;
 
