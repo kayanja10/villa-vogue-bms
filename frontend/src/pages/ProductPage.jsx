@@ -42,6 +42,12 @@ function useProductSeo(product) {
       tag.setAttribute('content', value);
     };
 
+    // Explicit index,follow — do NOT rely only on vite.config.js's prerender
+    // postProcess step to strip index.html's default noindex. That only
+    // covers the static prerendered file; if Google or anyone else ever
+    // renders this route live via client-side JS (cache miss, routing
+    // fallback, etc.), this line is what keeps it indexable in that path too.
+    setMeta('name', 'robots', 'index, follow');
     setMeta('name', 'description', description);
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
@@ -71,8 +77,15 @@ function useProductSeo(product) {
     }
     canonical.setAttribute('href', cleanUrl);
 
+    // Signal to the build-time prerenderer (see vite.config.js's
+    // renderAfterElementExists) that real product content is now in the
+    // DOM and it's safe to snapshot this page — instead of guessing a fixed
+    // wait time that could snapshot the loading spinner on a slow API call.
+    document.body.setAttribute('data-prerender-ready', 'true');
+
     return () => {
       document.title = prevTitle;
+      document.body.removeAttribute('data-prerender-ready');
       // Meta tags are intentionally left in place rather than removed on
       // unmount — the next page will overwrite them via the same setMeta
       // calls (Navbar/App-level defaults, or another product), which is
@@ -108,6 +121,7 @@ function ProductPageInner() {
     setNotFound(false);
 
     const load = async () => {
+      let isNotFound = false;
       try {
         const res = await productsApi.getPublicOne(id);
         if (!cancelled) setProduct(res.data);
@@ -117,14 +131,24 @@ function ProductPageInner() {
         // pattern used by the main portal's product list loader.
         try {
           const r = await fetch(`${BASE}/products/public/${id}`);
-          if (r.status === 404) { if (!cancelled) setNotFound(true); return; }
+          if (r.status === 404) { isNotFound = true; if (!cancelled) setNotFound(true); return; }
           const d = await r.json();
           if (!cancelled) setProduct(d);
         } catch {
+          isNotFound = true;
           if (!cancelled) setNotFound(true);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          // If the product genuinely doesn't exist, useProductSeo's effect
+          // never fires (it only runs when `product` is truthy), so this
+          // page would never set data-prerender-ready and would hang the
+          // build. Set it here as a fallback for exactly that case — a
+          // not-found page is legitimately noindex anyway (default from
+          // index.html applies, which is correct for a 404-style page).
+          if (isNotFound) document.body.setAttribute('data-prerender-ready', 'true');
+        }
       }
     };
     load();

@@ -39,6 +39,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "vite-plugin-prerender": "^1.0.8",
     "vite-plugin-pwa": "^1.2.0"
   }
 }

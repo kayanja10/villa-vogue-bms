@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1a1a1a" />
     <meta name="description" content="Villa Vogue Fashions - Business Management System" />
+    <!-- Default: NOT indexed. Public pages (Home, /track, /store/product/:id)
+         override this via <Helmet> with content="index, follow". Any route
+         that forgets to add that override safely stays out of Google's index
+         instead of accidentally leaking the BMS/admin shell into search. -->
+    <meta name="robots" content="noindex" />
     <title>Villa Vogue BMS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

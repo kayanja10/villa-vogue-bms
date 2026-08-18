@@ -80,7 +80,15 @@ function CustomerPortalWrapper() {
           if (!cancelled) setPortalProducts([]);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          // Prerender-ready signal (see vite.config.js's renderAfterElementExists).
+          // Set in `finally` — not just the success path — so a build never
+          // hangs waiting for this selector if the API is briefly down;
+          // it'll just prerender the empty-state markup that a real visitor
+          // would also see in that scenario, instead of timing out the build.
+          document.body.setAttribute('data-prerender-ready', 'true');
+        }
       }
     };
     fetchProducts();
@@ -169,6 +177,10 @@ function CustomerPortalWrapper() {
           name="description"
           content="Shop quality new and second-hand fashion for men, women, and children in Kampala, Uganda. Affordable, stylish clothing with fast WhatsApp ordering."
         />
+        {/* Explicit override of index.html's default noindex — see
+            ProductPage.jsx's useProductSeo for why this can't be left
+            implicit to the prerender build step alone. */}
+        <meta name="robots" content="index, follow" />
         <link rel="canonical" href={`${SITE_URL}/`} />
       </Helmet>
       <CustomerPortal

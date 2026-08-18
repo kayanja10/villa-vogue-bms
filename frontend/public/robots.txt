@@ -1,12 +1,19 @@
+# villavoguefashion.com — robots.txt
+
 User-agent: *
 Allow: /
+Allow: /store/
+Allow: /track
 
-# Personal/session-specific pages with no SEO value — block from indexing
-Disallow: /cart
-Disallow: /checkout
-Disallow: /account
+# The entire staff BMS lives under /dashboard and needs no external crawling.
+# No public links point here, so blocking it outright is safe.
 Disallow: /dashboard
-Disallow: /login
 Disallow: /api/
+
+# NOTE: /login is intentionally NOT disallowed here. It carries a
+# <meta name="robots" content="noindex"> tag (see index.html), and Google
+# must be able to CRAWL a page to see and obey a noindex tag. Blocking it
+# in robots.txt would prevent that and risks the URL appearing in search
+# results with no snippet instead of being cleanly excluded.
 
 Sitemap: https://www.villavoguefashion.com/sitemap.xml
