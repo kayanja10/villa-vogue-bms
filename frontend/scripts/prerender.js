@@ -8,11 +8,17 @@
 // HTML in dist/ with the fully-rendered version. This is what lets
 // Googlebot see real content immediately instead of an empty <div id="root">.
 //
-// Replaces vite-plugin-prerender, which fails to load under Node's ESM
-// loader on Vercel ("require is not defined in ES module scope").
+// Uses puppeteer-core + @sparticuz/chromium instead of plain puppeteer.
+// Vercel's build container is missing several shared libraries (libnss3.so
+// and others) that a normal desktop Chrome download needs, causing
+// "error while loading shared libraries" on launch. @sparticuz/chromium is
+// a Chromium build compiled specifically for minimal serverless/CI
+// environments like this one, so it launches cleanly with no extra
+// system packages needed.
 
 import { preview } from 'vite';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -23,14 +29,42 @@ const DIST_DIR = path.resolve(__dirname, '..', 'dist');
 const READY_SELECTOR = '[data-prerender-ready]';
 const PER_ROUTE_TIMEOUT_MS = 15000;
 
+// True on Vercel's build machines (and most CI), false when you run this
+// locally on Windows/Mac to test — locally, fall back to a normal Chrome/
+// Chromium install on your machine instead of the serverless binary.
+const IS_SERVERLESS_BUILD = !!process.env.VERCEL || !!process.env.CI;
+
 function routeToOutputPath(route) {
-  // '/'                     -> dist/index.html
-  // '/track'                -> dist/track/index.html
-  // '/store/product/123'    -> dist/store/product/123/index.html
   const clean = route === '/' ? '' : route.replace(/^\/|\/$/g, '');
   return clean
     ? path.join(DIST_DIR, clean, 'index.html')
     : path.join(DIST_DIR, 'index.html');
+}
+
+async function launchBrowser() {
+  if (IS_SERVERLESS_BUILD) {
+    return puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
+      headless: chromium.headless,
+    });
+  }
+  // Local dev fallback — uses whatever Chrome/Edge is installed on your
+  // machine rather than requiring the serverless binary locally too.
+  const localChromePaths = [
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/usr/bin/google-chrome',
+  ];
+  const found = localChromePaths.find((p) => fs.existsSync(p));
+  if (!found) {
+    throw new Error(
+      'No local Chrome install found for local testing. Either install Chrome, ' +
+      'or set VERCEL=1 in your env to force the serverless binary path locally.'
+    );
+  }
+  return puppeteer.launch({ executablePath: found, headless: true });
 }
 
 async function main() {
@@ -41,18 +75,13 @@ async function main() {
   }
   console.log(`[prerender] Prerendering ${routes.length} route(s)...`);
 
-  // Serve the just-built dist/ folder using Vite's own preview server —
-  // no extra static-server dependency needed.
   const server = await preview({
     root: path.resolve(__dirname, '..'),
     preview: { port: 4173, strictPort: false },
   });
   const baseUrl = server.resolvedUrls.local[0].replace(/\/$/, '');
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  const browser = await launchBrowser();
 
   let succeeded = 0;
   let failed = 0;
@@ -71,10 +100,6 @@ async function main() {
         console.log(`[prerender] OK   ${route}`);
         succeeded++;
       } catch (err) {
-        // Don't fail the whole build over one route — a stale product ID
-        // or a briefly slow API shouldn't block deploying everything else.
-        // The route just stays as the plain CSR shell, same as before this
-        // whole prerender feature existed — not worse than the status quo.
         console.warn(`[prerender] SKIP ${route} — ${err.message}`);
         failed++;
       } finally {
@@ -90,10 +115,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  // A bug in this script itself (not a single route) — surface it clearly
-  // but still don't hard-fail the deploy, since a broken prerender step
-  // is recoverable (just means pages stay CSR-only until fixed), whereas
-  // blocking the whole deploy over an SEO enhancement is worse.
   console.error('[prerender] Fatal error, continuing without prerendering:', err);
   process.exit(0);
 });

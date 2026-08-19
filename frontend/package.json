@@ -39,7 +39,8 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "puppeteer": "^23.0.0",
+    "@sparticuz/chromium": "^131.0.1",
+    "puppeteer-core": "^23.11.1",
     "vite-plugin-pwa": "^1.2.0"
   }
 }
