@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "chmod +x node_modules/.bin/vite && vite",
-    "build": "chmod +x node_modules/.bin/vite && vite build",
+    "build": "chmod +x node_modules/.bin/vite && vite build && node scripts/prerender.js",
     "preview": "npx vite preview",
     "lint": "eslint src --ext js,jsx"
   },
@@ -39,7 +39,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
-    "vite-plugin-prerender": "^1.0.8",
+    "puppeteer": "^23.0.0",
     "vite-plugin-pwa": "^1.2.0"
   }
 }
