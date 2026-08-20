@@ -14,8 +14,16 @@ export function useSocket() {
   useEffect(() => {
     if (!token || !user) return;
 
-    // Reuse existing socket if already connected
-    if (socketInstance && socketInstance.connected) {
+    // Reuse the existing socket whenever one already exists — even if it's
+    // still connecting/reconnecting (e.g. during a Render cold start). If we
+    // only check `.connected`, every component that mounts useSocket() while
+    // the first connection is still spinning up will create its OWN new
+    // io() instance on top of it. During a cold start that means several
+    // independent sockets are all retrying in parallel, multiplying both the
+    // connection attempts (which can trip rate limits) and every event
+    // listener below (causing duplicate toasts, duplicate logout events,
+    // etc). Only spin up a new socket if none exists at all.
+    if (socketInstance) {
       ref.current = socketInstance;
       window.__vv_socket = socketInstance;
       return;
