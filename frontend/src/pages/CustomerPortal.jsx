@@ -1673,7 +1673,6 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                               position: "absolute", inset: 0,
                               display: "flex", alignItems: "center", justifyContent: "center",
                               cursor: isAct ? "default" : "pointer",
-                              WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
                             }}
                           >
                             {/* Float bob — each item has a slightly different cadence */}
@@ -1690,7 +1689,6 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                                 boxShadow: isAct
                                   ? `0 38px 76px rgba(0,0,0,.58), 0 0 0 1.5px rgba(${rgb},.65), 0 0 58px 10px rgba(${rgb},.30)`
                                   : "0 18px 36px rgba(0,0,0,.42)",
-                                WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
                               }}>
                                 <img src={p.image_url} alt={p.name}
                                   loading={isAct ? "eager" : "lazy"}
