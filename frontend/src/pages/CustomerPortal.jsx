@@ -1614,6 +1614,7 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                   position: "absolute", inset: 0,
                   transformStyle: "preserve-3d",
                   rotateX: tiltX, rotateY: tiltY,
+                  WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
                 }}>
 
                   {/* ── Glass podium ── */}
@@ -1635,7 +1636,9 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
 
                   {/* ── Spinning ring ── */}
                   <motion.div
-                    style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d" }}
+                    style={{ position: "absolute", inset: 0, transformStyle: "preserve-3d",
+                             WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
+                             willChange: "transform" }}
                     animate={{ rotateY: -active * step }}
                     transition={{ type: "spring", stiffness: 36, damping: 15, mass: 1.2 }}
                   >
@@ -1648,6 +1651,7 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                           position: "absolute", inset: 0,
                           transform: `rotateY(${i * step}deg) translateZ(${HERO_RADIUS})`,
                           transformStyle: "preserve-3d",
+                          WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
                         }}>
                           {/* Depth layer — scale / opacity / blur by tier */}
                           <motion.div
@@ -1669,6 +1673,7 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                               position: "absolute", inset: 0,
                               display: "flex", alignItems: "center", justifyContent: "center",
                               cursor: isAct ? "default" : "pointer",
+                              WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
                             }}
                           >
                             {/* Float bob — each item has a slightly different cadence */}
@@ -1685,6 +1690,7 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                                 boxShadow: isAct
                                   ? `0 38px 76px rgba(0,0,0,.58), 0 0 0 1.5px rgba(${rgb},.65), 0 0 58px 10px rgba(${rgb},.30)`
                                   : "0 18px 36px rgba(0,0,0,.42)",
+                                WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
                               }}>
                                 <img src={p.image_url} alt={p.name}
                                   loading={isAct ? "eager" : "lazy"}
@@ -1716,11 +1722,13 @@ const HeroSection = ({ onShopNow, products, onQuickView }) => {
                                 position: "absolute", top: "100%", left: 0, right: 0, height: "42%",
                                 backgroundImage: `url(${p.image_url})`,
                                 backgroundSize: "cover", backgroundPosition: "center",
-                                transform: "scaleY(-1)",
+                                transform: "scaleY(-1) translateZ(0)",
                                 opacity: isAct ? .26 : .07,
                                 filter: "blur(3px)",
                                 WebkitMaskImage: "linear-gradient(to bottom, rgba(0,0,0,.55), transparent)",
                                 maskImage:        "linear-gradient(to bottom, rgba(0,0,0,.55), transparent)",
+                                WebkitBackfaceVisibility: "hidden", backfaceVisibility: "hidden",
+                                willChange: "transform",
                               }} />
 
                               {/* ── 3D floating price chip on active product ── */}
