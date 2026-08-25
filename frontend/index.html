@@ -2,22 +2,45 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+
     <meta name="theme-color" content="#1a1a1a" />
-    <meta name="description" content="Villa Vogue Fashions - Business Management System" />
-    <!-- Default: NOT indexed. Public pages (Home, /track, /store/product/:id)
-         override this via <Helmet> with content="index, follow". Any route
-         that forgets to add that override safely stays out of Google's index
-         instead of accidentally leaking the BMS/admin shell into search. -->
-    <meta name="robots" content="noindex" />
-    <title>Villa Vogue BMS</title>
+
+    <meta
+      name="description"
+      content="Villa Vogue Fashions - Quality clothing for men, women, and children in Kampala, Uganda."
+    />
+
+    <!-- Public website is indexable by search engines.
+         Private BMS routes should override this with noindex, nofollow
+         through the application's route-specific SEO handling. -->
+    <meta name="robots" content="index, follow" />
+
+    <title>Villa Vogue Fashions | Quality Clothing in Kampala</title>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap" rel="stylesheet" />
+
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;0,700;1,300;1,400&family=Playfair+Display:wght@400;500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap"
+      rel="stylesheet"
+    />
   </head>
+
   <body class="antialiased">
     <div id="root"></div>
+
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

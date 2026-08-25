@@ -9,6 +9,38 @@ const rateLimit     = require('express-rate-limit');
 const app    = express();
 const server = http.createServer(app);
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
+// IMPORTANT: this must be registered BEFORE the rate limiters (and before
+// helmet). Express middleware runs in registration order — if a rate
+// limiter or any other middleware sends a response first (e.g. a 429),
+// CORS headers never get attached to that response. The browser then
+// reports the failure as a generic "CORS policy" block, even though the
+// real cause was a 429/503, which makes the actual problem much harder to
+// diagnose from the client side.
+const ALLOWED_ORIGINS = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'https://villa-vogue-bms-b16k.vercel.app',  // old deployment
+  'https://villa-vogue-bms-dpth.vercel.app',  // current deployment
+  /^https:\/\/villa-vogue-bms.*\.vercel\.app$/, // all future preview deployments
+  'https://villavoguefashion.com',            // custom domain (no www)
+  'https://www.villavoguefashion.com',        // custom domain (www)
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    const allowed = ALLOWED_ORIGINS.some(o =>
+      typeof o === 'string' ? o === origin : o.test(origin)
+    );
+    if (allowed) return callback(null, true);
+    callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 // Protects against: a single misbehaving browser tab retrying in a loop,
 // a customer's phone accidentally double/triple-tapping checkout repeatedly,
@@ -37,31 +69,6 @@ const orderLimiter = rateLimit({
 
 app.use('/api/', generalLimiter);
 app.use('/api/orders', orderLimiter);
-
-// ─── CORS ─────────────────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = [
-  'http://localhost:3000',
-  'http://localhost:5173',
-  'https://villa-vogue-bms-b16k.vercel.app',  // old deployment
-  'https://villa-vogue-bms-dpth.vercel.app',  // current deployment
-  /^https:\/\/villa-vogue-bms.*\.vercel\.app$/, // all future preview deployments
-  'https://villavoguefashion.com',            // custom domain (no www)
-  'https://www.villavoguefashion.com',        // custom domain (www)
-];
-
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true);
-    const allowed = ALLOWED_ORIGINS.some(o =>
-      typeof o === 'string' ? o === origin : o.test(origin)
-    );
-    if (allowed) return callback(null, true);
-    callback(new Error(`CORS blocked: ${origin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
 
 // ─── Socket.IO ────────────────────────────────────────────────────────────────
 const io = new Server(server, {
