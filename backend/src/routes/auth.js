@@ -2,7 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const prisma = require("../config/db");
+const { prisma } = require("../prisma");
 
 const router = express.Router();
 
@@ -338,3 +338,4 @@ router.post("/logout", async (req, res) => {
 
 
 module.exports = router;
+
