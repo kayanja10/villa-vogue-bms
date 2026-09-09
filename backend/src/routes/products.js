@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { prisma } = require('../prisma');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
+const { generateUniqueSlug } = require('../utils/slugify');
 
 // ── Auto-generate Barcode (EAN-13 format with real check digit) ──────────────
 // Uses prefix "200" — the GS1 "restricted circulation" range officially
@@ -128,17 +129,29 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // Public endpoint for ecommerce store
+// SEO: accepts `categorySlug` (preferred, used by /shop/:categorySlug) as well
+// as the original `category` name filter (kept for backward compatibility
+// with any existing caller). Also returns each product's own `slug`,
+// `gender`, and its category's `slug` so the storefront and prerender/sitemap
+// scripts can build the new /shop/:categorySlug/:productSlug URLs without a
+// second round-trip.
 router.get('/public', async (req, res) => {
   try {
-    const { search, category, page = 1, limit = 24 } = req.query;
+    const { search, category, categorySlug, gender, page = 1, limit = 24 } = req.query;
     const where = { isActive: true, stock: { gt: 0 } };
     if (search) where.OR = [{ name: { contains: search, mode: 'insensitive' } }, { description: { contains: search, mode: 'insensitive' } }];
-    if (category) where.category = { name: category };
+    if (categorySlug) where.category = { slug: categorySlug };
+    else if (category) where.category = { name: category };
+    if (gender) where.gender = gender;
 
     const [products, total] = await Promise.all([
       prisma.product.findMany({
         where,
-        select: { id: true, name: true, price: true, images: true, description: true, stock: true, isFeatured: true, tags: true, createdAt: true, updatedAt: true, category: { select: { name: true } } },
+        select: {
+          id: true, name: true, slug: true, gender: true, price: true, images: true,
+          description: true, stock: true, isFeatured: true, tags: true, createdAt: true, updatedAt: true,
+          category: { select: { id: true, name: true, slug: true } },
+        },
         skip: (parseInt(page) - 1) * parseInt(limit),
         take: parseInt(limit),
         orderBy: [{ isFeatured: 'desc' }, { createdAt: 'desc' }],
@@ -167,10 +180,34 @@ router.get('/public/:id', async (req, res) => {
     const product = await prisma.product.findFirst({
       where: { id, isActive: true },
       select: {
-        id: true, name: true, price: true, costPrice: false, images: true,
+        id: true, name: true, slug: true, gender: true, price: true, costPrice: false, images: true,
         description: true, stock: true, isFeatured: true, tags: true,
         createdAt: true, updatedAt: true, sku: true,
-        category: { select: { id: true, name: true } },
+        category: { select: { id: true, name: true, slug: true } },
+      },
+    });
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    res.json(product);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/products/public/slug/:slug — the real, canonical SEO product page
+// endpoint (used by /shop/:categorySlug/:productSlug). Registered BEFORE
+// /public/:id would ever be reached for this path since "slug" is a fixed
+// segment, not a numeric id, so there's no route-ordering ambiguity here —
+// but it's kept directly under the id route for readability since the two
+// serve the same purpose (one legacy, one canonical).
+router.get('/public/slug/:slug', async (req, res) => {
+  try {
+    const product = await prisma.product.findFirst({
+      where: { slug: req.params.slug, isActive: true },
+      select: {
+        id: true, name: true, slug: true, gender: true, price: true, images: true,
+        description: true, stock: true, isFeatured: true, tags: true,
+        createdAt: true, updatedAt: true, sku: true,
+        category: { select: { id: true, name: true, slug: true } },
       },
     });
     if (!product) return res.status(404).json({ error: 'Product not found' });
@@ -259,15 +296,17 @@ router.get('/:id', authenticate, async (req, res) => {
 // POST /api/products
 router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
-    const { name, sku, barcode, categoryId, price, costPrice, stock, lowStockThreshold, description, images, tags, variants, supplierId, isFeatured } = req.body;
+    const { name, sku, barcode, categoryId, price, costPrice, stock, lowStockThreshold, description, images, tags, variants, supplierId, isFeatured, gender } = req.body;
 
     // Auto-generate SKU if not provided (or blank) — guarantees every product has one
     const finalSku = sku && sku.trim() ? sku.trim() : await generateSkuWithRetry(categoryId);
     // Auto-generate barcode if not provided — guarantees every product is scannable
     const finalBarcode = barcode && barcode.trim() ? barcode.trim() : await generateBarcodeWithRetry();
+    // SEO: every product gets a unique URL slug from its name at creation time
+    const slug = await generateUniqueSlug(prisma.product, name);
 
     const product = await prisma.product.create({
-      data: { name, sku: finalSku, barcode: finalBarcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },
+      data: { name, slug, gender: gender || null, sku: finalSku, barcode: finalBarcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), stock: parseInt(stock || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured },
       include: { category: true },
     });
 
@@ -286,10 +325,26 @@ router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
 router.put('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { name, sku, barcode, categoryId, price, costPrice, lowStockThreshold, description, images, tags, variants, supplierId, isFeatured, isActive } = req.body;
+    const { name, sku, barcode, categoryId, price, costPrice, lowStockThreshold, description, images, tags, variants, supplierId, isFeatured, isActive, gender, slug: requestedSlug } = req.body;
+
+    const data = { name, sku, barcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured, isActive: isActive !== undefined ? !!isActive : undefined, gender: gender !== undefined ? (gender || null) : undefined };
+
+    // SEO: never regenerate a product's slug just because staff fixed a typo
+    // in some other field — that would silently break any link already
+    // shared or indexed under the old slug. Only touch it if a new slug was
+    // explicitly supplied, or the name itself actually changed.
+    if (requestedSlug !== undefined && requestedSlug !== null && requestedSlug.trim()) {
+      data.slug = await generateUniqueSlug(prisma.product, requestedSlug, id);
+    } else if (name !== undefined) {
+      const existing = await prisma.product.findUnique({ where: { id }, select: { name: true, slug: true } });
+      if (existing && existing.name !== name || (existing && !existing.slug)) {
+        data.slug = await generateUniqueSlug(prisma.product, name, id);
+      }
+    }
+
     const product = await prisma.product.update({
       where: { id },
-      data: { name, sku, barcode, categoryId: categoryId ? parseInt(categoryId) : null, price: parseFloat(price), costPrice: parseFloat(costPrice || 0), lowStockThreshold: parseInt(lowStockThreshold || 5), description, images: JSON.stringify(images || []), tags: JSON.stringify(tags || []), variants: JSON.stringify(variants || []), supplierId: supplierId ? parseInt(supplierId) : null, isFeatured: !!isFeatured, isActive: isActive !== undefined ? !!isActive : undefined },
+      data,
       include: { category: true },
     });
     global.io?.emit('product:updated', product);

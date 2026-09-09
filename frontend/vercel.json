@@ -6,6 +6,7 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "/api/sitemap.xml" },
+    { "source": "/store/product/:id", "destination": "/api/redirect-product?id=:id" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

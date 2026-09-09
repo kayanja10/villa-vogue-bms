@@ -49,6 +49,7 @@ export const products = {
   list:        (p)    => api.get('/products', { params: p }),
   listPublic:  (p)    => api.get('/products/public', { params: p }),
   getPublicOne:(id)   => api.get(`/products/public/${id}`),
+  getPublicBySlug: (slug) => api.get(`/products/public/slug/${slug}`),
   get:         (id)   => api.get(`/products/${id}`),
   create:      (d)    => api.post('/products', d),
   update:      (id,d) => api.put(`/products/${id}`, d),
@@ -111,6 +112,8 @@ export const categories = {
   create: (d)    => api.post('/categories', d),
   update: (id,d) => api.put(`/categories/${id}`, d),
   delete: (id)   => api.delete(`/categories/${id}`),
+  listPublic:  ()     => api.get('/categories/public'),
+  getPublicBySlug: (slug) => api.get(`/categories/public/${slug}`),
 };
 
 export const suppliers = {

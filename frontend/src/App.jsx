@@ -25,6 +25,7 @@ import {
 } from './pages/index.jsx';
 import CustomerPortal from './pages/CustomerPortal';
 import ProductPage from './pages/ProductPage';
+import CategoryPage from './pages/CategoryPage';
 import { customers, products as productsApi } from './lib/api';
 import './index.css';
 
@@ -236,10 +237,21 @@ export default function App() {
         <Routes>
           {/* / — PUBLIC STORE FIRST. This is what every visitor sees by default. */}
           <Route path="/" element={<CustomerPortalWrapper />} />
-          {/* /store/product/:id — standalone, real, shareable product page.
-              Registered BEFORE the /store/* wildcard below so React Router
-              matches this specific path first rather than letting the
-              catch-all swallow it into the homepage modal experience. */}
+
+          {/* SEO: the real, canonical URLs — /shop/:categorySlug for a category
+              landing page, /shop/:categorySlug/:productSlug for a product.
+              Registered before the legacy /store/* routes below. */}
+          <Route path="/shop/:categorySlug/:productSlug" element={<ProductPage />} />
+          <Route path="/shop/:categorySlug" element={<CategoryPage />} />
+
+          {/* /store/product/:id — LEGACY. Vercel's rewrite (see vercel.json)
+              sends these to /api/redirect-product, which 301s straight to the
+              new /shop/:categorySlug/:productSlug URL before this route is
+              ever reached in production. This route stays registered as a
+              fallback for local dev (where the Vercel rewrite doesn't run)
+              and for the brief window right after the slug migration before
+              backfillSlugs.js has run. ProductPage itself performs the same
+              redirect client-side if it ever does get hit with an :id param. */}
           <Route path="/store/product/:id" element={<ProductPage />} />
           {/* /store — kept as an alias so any previously shared /store links still work */}
           <Route path="/store/*" element={<CustomerPortalWrapper />} />

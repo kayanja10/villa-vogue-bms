@@ -14,6 +14,8 @@ const BASE = import.meta.env.VITE_API_URL || 'https://villa-vogue-bms.onrender.c
 // tags, and reverts to the site defaults when the page unmounts. This is
 // what makes a WhatsApp/Facebook link preview show the actual product image
 // and name instead of the generic homepage card.
+const SITE_URL = 'https://www.villavoguefashion.com';
+
 function useProductSeo(product) {
   useEffect(() => {
     if (!product) return;
@@ -52,12 +54,18 @@ function useProductSeo(product) {
     setMeta('property', 'og:title', title);
     setMeta('property', 'og:description', description);
     setMeta('property', 'og:type', 'product');
-    // Strip query params (?fbclid=, ?utm_source=, etc.) for both og:url and
-    // canonical — product links get shared via WhatsApp/social a lot, and
-    // tracking params in the canonical would make Google see the same
-    // product as multiple distinct "duplicate" URLs depending on how it
-    // was shared, instead of one authoritative URL.
-    const cleanUrl = `${window.location.origin}${window.location.pathname}`;
+
+    // SEO: canonical is now built from the product's own slug + its
+    // category's slug — the real, permanent URL — rather than
+    // window.location.pathname. This matters because this same component
+    // also renders on the legacy /store/product/:id route (see the
+    // redirect effect below); pathname there would wrongly canonicalize a
+    // product to its old id-based URL instead of the new one.
+    const categorySlug = product.category?.slug;
+    const canonicalPath = categorySlug && product.slug
+      ? `/shop/${categorySlug}/${product.slug}`
+      : `/store/product/${product.id}`; // fallback: slug not backfilled yet
+    const cleanUrl = `${SITE_URL}${canonicalPath}`;
 
     setMeta('property', 'og:url', cleanUrl);
     if (image) setMeta('property', 'og:image', image);
@@ -68,7 +76,8 @@ function useProductSeo(product) {
 
     // Canonical link — tells Google this is the authoritative URL for this
     // product, preventing duplicate-content issues if the same product is
-    // ever reachable via more than one URL pattern in the future.
+    // ever reachable via more than one URL pattern (old id link, shared
+    // link with tracking params, etc.).
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {
       canonical = document.createElement('link');
@@ -76,6 +85,48 @@ function useProductSeo(product) {
       document.head.appendChild(canonical);
     }
     canonical.setAttribute('href', cleanUrl);
+
+    // SEO: Product + BreadcrumbList JSON-LD. Values are pulled directly from
+    // the same product record rendered on the page — no invented ratings,
+    // reviews, or availability, per Google's structured-data guidelines.
+    const ldId = 'vv-product-jsonld';
+    document.getElementById(ldId)?.remove();
+    const ld = document.createElement('script');
+    ld.type = 'application/ld+json';
+    ld.id = ldId;
+    ld.textContent = JSON.stringify({
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Product',
+          name: product.name,
+          description: product.description || undefined,
+          sku: product.sku || undefined,
+          image: image || undefined,
+          brand: { '@type': 'Brand', name: 'Villa Vogue Fashions' },
+          offers: {
+            '@type': 'Offer',
+            url: cleanUrl,
+            priceCurrency: 'UGX',
+            price: Number(product.price || 0),
+            availability: product.stock > 0
+              ? 'https://schema.org/InStock'
+              : 'https://schema.org/OutOfStock',
+          },
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${SITE_URL}/` },
+            product.category?.name && product.category?.slug
+              ? { '@type': 'ListItem', position: 2, name: product.category.name, item: `${SITE_URL}/shop/${product.category.slug}` }
+              : null,
+            { '@type': 'ListItem', position: 3, name: product.name, item: cleanUrl },
+          ].filter(Boolean),
+        },
+      ],
+    });
+    document.head.appendChild(ld);
 
     // Signal to the build-time prerenderer (see vite.config.js's
     // renderAfterElementExists) that real product content is now in the
@@ -86,6 +137,7 @@ function useProductSeo(product) {
     return () => {
       document.title = prevTitle;
       document.body.removeAttribute('data-prerender-ready');
+      document.getElementById(ldId)?.remove();
       // Meta tags are intentionally left in place rather than removed on
       // unmount — the next page will overwrite them via the same setMeta
       // calls (Navbar/App-level defaults, or another product), which is
@@ -95,7 +147,11 @@ function useProductSeo(product) {
 }
 
 function ProductPageInner() {
-  const { id } = useParams();
+  // SEO: this component now serves two routes (see App.jsx) —
+  // /shop/:categorySlug/:productSlug (canonical) and the legacy
+  // /store/product/:id. Exactly one of these param sets will be present
+  // depending on which route matched.
+  const { id, categorySlug, productSlug } = useParams();
   const navigate = useNavigate();
   const showToast = useToast();
 
@@ -115,22 +171,29 @@ function ProductPageInner() {
   useEffect(() => { localStorage.setItem('vv_wishlist', JSON.stringify(wishlist)); }, [wishlist]);
 
   // ── Fetch the single product ────────────────────────────────────────────
+  // SEO: uses the canonical slug endpoint when we're on /shop/:categorySlug/
+  // :productSlug, or the legacy id endpoint when we're on /store/product/:id.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setNotFound(false);
 
+    const legacyFetchUrl = id ? `${BASE}/products/public/${id}` : null;
+    const slugFetchUrl = productSlug ? `${BASE}/products/public/slug/${productSlug}` : null;
+
     const load = async () => {
       let isNotFound = false;
       try {
-        const res = await productsApi.getPublicOne(id);
+        const res = productSlug
+          ? await productsApi.getPublicBySlug(productSlug)
+          : await productsApi.getPublicOne(id);
         if (!cancelled) setProduct(res.data);
       } catch (err) {
         // Fall back to a raw fetch in case the axios client's base URL
         // hasn't picked up VITE_API_URL for any reason — same defensive
         // pattern used by the main portal's product list loader.
         try {
-          const r = await fetch(`${BASE}/products/public/${id}`);
+          const r = await fetch(slugFetchUrl || legacyFetchUrl);
           if (r.status === 404) { isNotFound = true; if (!cancelled) setNotFound(true); return; }
           const d = await r.json();
           if (!cancelled) setProduct(d);
@@ -153,7 +216,32 @@ function ProductPageInner() {
     };
     load();
     return () => { cancelled = true; };
-  }, [id]);
+  }, [id, productSlug]);
+
+  // SEO: self-healing redirect. Covers two cases without needing the
+  // Vercel-level redirect (see api/redirect-product.js) to have run yet —
+  // useful for local dev, and as a safety net in production:
+  //   1. Hit the legacy /store/product/:id route directly -> once the
+  //      product loads and we know its slug, replace the URL with the
+  //      canonical /shop/:categorySlug/:productSlug.
+  //   2. Hit /shop/:categorySlug/:productSlug with the WRONG categorySlug
+  //      (e.g. a product moved categories after being indexed) -> replace
+  //      with the correct categorySlug so there's only ever one indexable
+  //      URL per product.
+  useEffect(() => {
+    if (!product) return;
+    const realCategorySlug = product.category?.slug;
+    const realProductSlug = product.slug;
+    if (!realCategorySlug || !realProductSlug) return; // not backfilled yet — nothing to correct to
+
+    const onCanonicalRoute = !!productSlug;
+    const mismatched = onCanonicalRoute && (categorySlug !== realCategorySlug || productSlug !== realProductSlug);
+    const onLegacyRoute = !onCanonicalRoute && !!id;
+
+    if (mismatched || onLegacyRoute) {
+      navigate(`/shop/${realCategorySlug}/${realProductSlug}`, { replace: true });
+    }
+  }, [product, categorySlug, productSlug, id, navigate]);
 
   // ── Fetch the broader catalog once, for "Similar Products" inside the
   // reused QuickViewModal — same data shape the modal already expects ──────
@@ -199,7 +287,11 @@ function ProductPageInner() {
   }, [addToCart, navigate, showToast]);
 
   const handleSelectSimilarProduct = useCallback((p) => {
-    navigate(`/store/product/${p.id}`);
+    // SEO: prefer the new canonical URL once the product carries slug data;
+    // fall back to the legacy id route (which self-heals via the effect
+    // above) for any product the backfill script hasn't reached yet.
+    if (p.category?.slug && p.slug) navigate(`/shop/${p.category.slug}/${p.slug}`);
+    else navigate(`/store/product/${p.id}`);
   }, [navigate]);
 
   // ── Not found state ──────────────────────────────────────────────────────

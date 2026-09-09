@@ -77,17 +77,23 @@ export default async function handler(req, res) {
 
   try {
     // ── Products — fetched from the existing public products endpoint ───────
+    // SEO: now points at the real, canonical /shop/:categorySlug/:productSlug
+    // URL instead of the legacy id-based one — that route is 301-redirected
+    // now (see api/redirect-product.js), so it must never appear in the
+    // sitemap itself. Any product missing a slug or category slug (not yet
+    // touched by the backfill script) is skipped rather than emitting a
+    // broken URL — it'll appear automatically on the next sitemap request
+    // once backfillSlugs.js has run.
     const productsData = await fetchWithTimeout(`${API_BASE}/products/public?limit=500`);
     const products = productsData?.products || [];
-    productUrls = products.map((p) => ({
-      // Matches the real route wired up in App.jsx: /store/product/:id
-      // (also the exact URL the in-app "Share Product" button generates,
-      // so a shared link and a sitemap-indexed link are always identical).
-      loc: `${SITE_URL}/store/product/${p.id}`,
-      lastmod: p.updatedAt ? p.updatedAt.split('T')[0] : today,
-      changefreq: 'weekly',
-      priority: p.isFeatured ? '0.9' : '0.7',
-    }));
+    productUrls = products
+      .filter((p) => p.slug && p.category?.slug)
+      .map((p) => ({
+        loc: `${SITE_URL}/shop/${p.category.slug}/${p.slug}`,
+        lastmod: p.updatedAt ? p.updatedAt.split('T')[0] : today,
+        changefreq: 'weekly',
+        priority: p.isFeatured ? '0.9' : '0.7',
+      }));
   } catch (err) {
     console.error('Sitemap: failed to fetch products', err.message);
     // Fall through with an empty product list rather than failing the
@@ -96,18 +102,27 @@ export default async function handler(req, res) {
   }
 
   // ── Categories ───────────────────────────────────────────────────────────
-  // NOTE: category filtering on the storefront (activeCategory) is internal
-  // React state, not read from a URL query parameter — there is currently
-  // no real, working URL like /store?category=X that would actually filter
-  // to that category on page load. Generating those URLs in the sitemap
-  // would silently 200 to the homepage showing ALL products regardless of
-  // which category Google indexed, which is the same class of dead-link
-  // mistake already caught and fixed for the static pages above. Category
-  // URLs are intentionally omitted until the storefront reads ?category=
-  // from the URL on load — wiring that up is a small follow-up change to
-  // CustomerPortal.jsx, not a sitemap problem, so it's deliberately left
-  // out here rather than shipped half-working.
+  // SEO: /shop/:categorySlug is now a real, working route (see App.jsx +
+  // CategoryPage.jsx) that reads the category from the URL path itself —
+  // unlike the old ?category= query param, this always resolves to the
+  // right content on a fresh page load, so it's safe to list here. Only
+  // categories the public endpoint returns are included, which already
+  // excludes any category with zero active/in-stock products.
   let categoryUrls = [];
+  try {
+    const catData = await fetchWithTimeout(`${API_BASE}/categories/public`);
+    const cats = Array.isArray(catData) ? catData : (catData?.categories || []);
+    categoryUrls = cats
+      .filter((c) => c.slug)
+      .map((c) => ({
+        loc: `${SITE_URL}/shop/${c.slug}`,
+        lastmod: today,
+        changefreq: 'weekly',
+        priority: '0.8',
+      }));
+  } catch (err) {
+    console.error('Sitemap: failed to fetch categories', err.message);
+  }
 
   const allUrls = [...staticUrls, ...productUrls, ...categoryUrls];
 
