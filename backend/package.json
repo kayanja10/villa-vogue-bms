@@ -1,11 +1,11 @@
-{
+﻿{
   "name": "villavogue-bms-backend",
   "version": "2.0.0",
   "description": "Villa Vogue BMS - Backend API",
   "main": "src/server.js",
   "type": "commonjs",
   "scripts": {
-    "start": "npx prisma migrate deploy && node src/server.js",
+    "start": "chmod +x node_modules/.bin/* && npx prisma migrate deploy && node src/server.js",
     "dev": "nodemon src/server.js",
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate",
@@ -13,7 +13,7 @@
     "db:studio": "npx prisma studio",
     "migrate": "node src/utils/migrate.js",
     "db:push": "npx prisma db push",
-    "build": "npx prisma generate"
+    "build": "chmod +x node_modules/.bin/* && npx prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
