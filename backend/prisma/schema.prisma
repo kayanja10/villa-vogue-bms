@@ -157,7 +157,7 @@ model Order {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   customer       Customer? @relation(fields: [customerId], references: [id])
-  users          User?     @relation(fields: [servedBy], references: [id])
+  servedByUser          User?     @relation(fields: [servedBy], references: [id])
   payments       Payment[]
   refunds        Refund[]
 
