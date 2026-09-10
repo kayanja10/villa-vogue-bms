@@ -9,6 +9,18 @@ const rateLimit     = require('express-rate-limit');
 const app    = express();
 const server = http.createServer(app);
 
+// ─── Trust proxy ────────────────────────────────────────────────────────────
+// Render sits in front of your app behind its own reverse proxy, so every
+// incoming request already has an X-Forwarded-For header set by Render
+// itself. Without this, Express doesn't know that header is trustworthy,
+// so express-rate-limit refuses to use it (to avoid a client spoofing their
+// own IP) and throws the ERR_ERL_UNEXPECTED_X_FORWARDED_FOR warning seen in
+// the logs. Setting this to 1 tells Express "trust exactly one hop of
+// proxy" — i.e. trust Render's own proxy, nothing beyond it — which lets
+// the rate limiters correctly key off each visitor's real IP instead of
+// all falling under Render's single proxy IP.
+app.set('trust proxy', 1);
+
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 // IMPORTANT: this must be registered BEFORE the rate limiters (and before
 // helmet). Express middleware runs in registration order — if a rate
