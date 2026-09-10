@@ -8,62 +8,70 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String
-  username  String   @unique
-  email     String   @unique
-  password  String
-  role      String   @default("STAFF")
-  phone     String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  salaryPaymentsReceived SalaryPayment[] @relation("SalaryEmployee")
-  salaryPaymentsCreated  SalaryPayment[] @relation("SalaryCreator")
-
+  id            Int            @id @default(autoincrement())
+  username      String         @unique
+  email         String?        @unique
+  phone         String?
+  password      String
+  role          String         @default("staff")
+  avatar        String?
+  isActive      Boolean        @default(true)
+  twoFaEnabled  Boolean        @default(false)
+  twoFaSecret   String?
+  pinHash       String?
+  loginAttempts Int            @default(0)
+  lockedUntil   DateTime?
+  createdAt     DateTime       @default(now())
+  lastLogin     DateTime?
+  name          String
+  updatedAt     DateTime       @default(now()) @updatedAt
   activityLogs  ActivityLog[]
+  cash_book     CashBook[]
+  expenses      Expense[]
+  orders        Order[]
+  quotes        Quote[]
   shifts        StaffShift[]
   targets       StaffTarget[]
-  sessions      SessionAudit[]
-  otpCodes      OtpCode[]
-  notifications Notification[]
 
   @@map("users")
 }
 
 model Customer {
-  id        Int      @id @default(autoincrement())
-  name      String
-  email     String?  @unique
-  phone     String?
-  address   String?
-  notes     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  orders       Order[]
-  layaways     Layaway[]
-  quotes       Quote[]
-  debts        CustomerDebt[]
-  feedback     Feedback[]
-  statements   CustomerStatement[]
-  onlineOrders OnlineOrder[]
+  id            Int                 @id @default(autoincrement())
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  notes         String?
+  password      String?
+  birthday      String?
+  loyaltyPoints Int                 @default(0)
+  totalSpent    Float               @default(0)
+  visitCount    Int                 @default(0)
+  tier          String              @default("bronze")
+  favorites     String              @default("[]")
+  isActive      Boolean             @default(true)
+  createdAt     DateTime            @default(now())
+  debts         CustomerDebt[]
+  statements    CustomerStatement[]
+  feedback      Feedback[]
+  layaways      Layaway[]
+  orders        Order[]
 
   @@map("customers")
 }
 
 model Supplier {
-  id            Int      @id @default(autoincrement())
-  name          String
-  contactPerson String?
-  phone         String?
-  email         String?
-  address       String?
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
+  id             Int                   @id @default(autoincrement())
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  address        String?
+  notes          String?
+  totalSupplied  Float                 @default(0)
+  isActive       Boolean               @default(true)
+  createdAt      DateTime              @default(now())
   products       Product[]
   purchaseOrders PurchaseOrder[]
   transactions   SupplierTransaction[]
@@ -72,43 +80,41 @@ model Supplier {
 }
 
 model Category {
-  id          Int      @id @default(autoincrement())
-  name        String   @unique
-  slug        String?  @unique
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
   description String?
-  color       String   @default("#C9A96E")
-  createdAt   DateTime @default(now())
-
-  products Product[]
+  color       String    @default("#C9A96E")
+  createdAt   DateTime  @default(now())
+  slug        String?   @unique
+  products    Product[]
 
   @@map("categories")
 }
 
 model Product {
-  id                Int      @id @default(autoincrement())
+  id                Int             @id @default(autoincrement())
   name              String
-  slug              String?  @unique
-  sku               String?  @unique
-  barcode           String?  @unique
+  sku               String?         @unique
+  barcode           String?         @unique
   categoryId        Int?
-  price             Float    @default(0)
-  costPrice         Float    @default(0)
-  stock             Int      @default(0)
-  lowStockThreshold Int      @default(5)
+  price             Float           @default(0)
+  costPrice         Float           @default(0)
+  stock             Int             @default(0)
+  lowStockThreshold Int             @default(5)
   description       String?
-  images            String   @default("[]")
-  tags              String   @default("[]")
-  variants          String   @default("[]")
+  images            String          @default("[]")
+  tags              String          @default("[]")
+  variants          String          @default("[]")
   supplierId        Int?
+  isFeatured        Boolean         @default(false)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  slug              String?         @unique
   gender            String?
-  isFeatured        Boolean  @default(false)
-  isActive          Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  category       Category?       @relation(fields: [categoryId], references: [id])
-  supplier       Supplier?       @relation(fields: [supplierId], references: [id])
-  stockMovements StockMovement[]
+  category          Category?       @relation(fields: [categoryId], references: [id])
+  supplier          Supplier?       @relation(fields: [supplierId], references: [id])
+  stockMovements    StockMovement[]
 
   @@map("products")
 }
@@ -120,72 +126,94 @@ model StockMovement {
   quantity  Int
   reason    String?
   reference String?
+  costPrice Float    @default(0)
+  userId    Int?
   createdAt DateTime @default(now())
-
-  product Product @relation(fields: [productId], references: [id])
+  product   Product  @relation(fields: [productId], references: [id])
 
   @@map("stock_movements")
 }
 
 model Order {
-  id            Int      @id @default(autoincrement())
-  customerId    Int?
-  orderNumber   String   @unique
-  status        String   @default("PENDING")
-  subtotal      Float    @default(0)
-  discount      Float    @default(0)
-  total         Float    @default(0)
-  paymentStatus String   @default("PENDING")
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  customer Customer? @relation(fields: [customerId], references: [id])
-  payments Payment[]
+  id             Int       @id @default(autoincrement())
+  orderNumber    String    @unique
+  customerId     Int?
+  customerName   String?
+  customerPhone  String?
+  customerEmail  String?
+  items          String
+  subtotal       Float     @default(0)
+  discount       Float     @default(0)
+  discountType   String    @default("fixed")
+  tax            Float     @default(0)
+  total          Float     @default(0)
+  paymentMethod  String    @default("cash")
+  paymentStatus  String    @default("paid")
+  orderStatus    String    @default("completed")
+  orderSource    String    @default("pos")
+  notes          String?
+  servedBy       Int?
+  receiptPrinted Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  users          User?     @relation(fields: [servedBy], references: [id])
+  payments       Payment[]
+  refunds        Refund[]
 
   @@map("orders")
 }
 
 model Payment {
   id        Int      @id @default(autoincrement())
-  orderId   Int
+  orderId   Int?
   amount    Float
   method    String
+  status    String   @default("pending")
   reference String?
-  status    String   @default("COMPLETED")
+  phone     String?
+  network   String?
+  stripeId  String?
+  metadata  String?
   createdAt DateTime @default(now())
-
-  order Order @relation(fields: [orderId], references: [id])
+  order     Order?   @relation(fields: [orderId], references: [id])
 
   @@map("payments")
 }
 
 model Refund {
-  id        Int      @id @default(autoincrement())
-  orderId   Int?
-  amount    Float
-  reason    String?
-  method    String?
-  reference String?
-  createdAt DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  orderId      Int
+  orderNumber  String
+  reason       String?
+  items        String   @default("[]")
+  amount       Float    @default(0)
+  refundMethod String   @default("cash")
+  processedBy  Int?
+  createdAt    DateTime @default(now())
+  orders       Order    @relation(fields: [orderId], references: [id])
 
   @@map("refunds")
 }
 
 model Layaway {
-  id          Int       @id @default(autoincrement())
-  customerId  Int
-  reference   String    @unique
-  totalAmount Float     @default(0)
-  paidAmount  Float     @default(0)
-  balance     Float     @default(0)
-  status      String    @default("ACTIVE")
-  dueDate     DateTime?
-  notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  customer Customer @relation(fields: [customerId], references: [id])
+  id            Int       @id @default(autoincrement())
+  layawayNumber String    @unique
+  customerId    Int?
+  customerName  String
+  customerPhone String?
+  items         String    @default("[]")
+  totalAmount   Float     @default(0)
+  depositPaid   Float     @default(0)
+  balanceDue    Float     @default(0)
+  dueDate       String?
+  status        String    @default("active")
+  payments      String    @default("[]")
+  notes         String?
+  createdBy     Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  customer      Customer? @relation(fields: [customerId], references: [id])
 
   @@map("layaways")
 }
@@ -193,29 +221,28 @@ model Layaway {
 model Expense {
   id          Int      @id @default(autoincrement())
   title       String
-  category    String?
-  amount      Float
+  amount      Float    @default(0)
+  category    String   @default("General")
   description String?
+  date        String?
+  recordedBy  Int?
   createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  users       User?    @relation(fields: [recordedBy], references: [id])
 
   @@map("expenses")
 }
 
 model DiscountCode {
-  id          Int       @id @default(autoincrement())
-  code        String    @unique
-  type        String
-  value       Float
-  minAmount   Float?
-  maxDiscount Float?
-  startDate   DateTime?
-  endDate     DateTime?
-  usageLimit  Int?
-  usageCount  Int       @default(0)
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  type      String   @default("percent")
+  value     Float    @default(0)
+  minOrder  Float    @default(0)
+  maxUses   Int      @default(0)
+  usedCount Int      @default(0)
+  isActive  Boolean  @default(true)
+  expiresAt String?
+  createdAt DateTime @default(now())
 
   @@map("discount_codes")
 }
@@ -223,13 +250,15 @@ model DiscountCode {
 model SupplierTransaction {
   id          Int      @id @default(autoincrement())
   supplierId  Int
-  type        String
-  amount      Float
-  reference   String?
-  description String?
+  productId   Int?
+  productName String?
+  quantity    Int      @default(0)
+  unitCost    Float    @default(0)
+  totalCost   Float    @default(0)
+  notes       String?
+  recordedBy  Int?
   createdAt   DateTime @default(now())
-
-  supplier Supplier @relation(fields: [supplierId], references: [id])
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
 
   @@map("supplier_transactions")
 }
@@ -237,159 +266,135 @@ model SupplierTransaction {
 model StaffShift {
   id          Int       @id @default(autoincrement())
   userId      Int
-  startTime   DateTime
-  endTime     DateTime?
-  status      String    @default("OPEN")
-  openingCash Float     @default(0)
-  closingCash Float?
+  clockIn     DateTime  @default(now())
+  clockOut    DateTime?
+  hoursWorked Float     @default(0)
   notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
 
   @@map("staff_shifts")
 }
 
 model StaffTarget {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  target    Float    @default(0)
-  period    String
-  startDate DateTime
-  endDate   DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user User @relation(fields: [userId], references: [id])
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  period       String
+  targetSales  Float    @default(0)
+  actualSales  Float    @default(0)
+  targetOrders Int      @default(0)
+  actualOrders Int      @default(0)
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id])
 
   @@map("staff_targets")
 }
 
 model Quote {
-  id          Int       @id @default(autoincrement())
-  customerId  Int?
-  quoteNumber String    @unique
-  status      String    @default("DRAFT")
-  subtotal    Float     @default(0)
-  discount    Float     @default(0)
-  total       Float     @default(0)
-  validUntil  DateTime?
-  notes       String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  customer Customer? @relation(fields: [customerId], references: [id])
+  id            Int      @id @default(autoincrement())
+  quoteNumber   String   @unique
+  customerId    Int?
+  customerName  String?
+  customerPhone String?
+  customerEmail String?
+  items         String   @default("[]")
+  subtotal      Float    @default(0)
+  discount      Float    @default(0)
+  tax           Float    @default(0)
+  total         Float    @default(0)
+  validUntil    String?
+  notes         String?
+  status        String   @default("pending")
+  createdBy     Int?
+  createdAt     DateTime @default(now())
+  users         User?    @relation(fields: [createdBy], references: [id])
 
   @@map("quotes")
 }
 
 model PurchaseOrder {
   id           Int       @id @default(autoincrement())
+  poNumber     String    @unique
   supplierId   Int
-  orderNumber  String    @unique
-  status       String    @default("PENDING")
-  total        Float     @default(0)
-  expectedDate DateTime?
+  items        String    @default("[]")
+  totalCost    Float     @default(0)
+  status       String    @default("pending")
+  expectedDate String?
+  receivedAt   DateTime?
   notes        String?
+  createdBy    Int?
   createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  supplier Supplier @relation(fields: [supplierId], references: [id])
+  supplier     Supplier  @relation(fields: [supplierId], references: [id])
 
   @@map("purchase_orders")
 }
 
 model CustomerDebt {
-  id         Int       @id @default(autoincrement())
-  customerId Int
-  amount     Float     @default(0)
-  paidAmount Float     @default(0)
-  balance    Float     @default(0)
-  status     String    @default("UNPAID")
-  dueDate    DateTime?
-  notes      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-
-  customer Customer @relation(fields: [customerId], references: [id])
+  id          Int      @id @default(autoincrement())
+  customerId  Int
+  amount      Float    @default(0)
+  paidAmount  Float    @default(0)
+  description String?
+  dueDate     String?
+  status      String   @default("outstanding")
+  payments    String   @default("[]")
+  createdAt   DateTime @default(now())
+  customer    Customer @relation(fields: [customerId], references: [id])
 
   @@map("customer_debts")
 }
 
-model CashFloat {
-  id        Int      @id @default(autoincrement())
-  amount    Float    @default(0)
-  type      String
-  reference String?
-  notes     String?
-  createdAt DateTime @default(now())
-
-  @@map("cash_floats")
-}
-
 model CashBook {
-  id          Int      @id @default(autoincrement())
-  type        String
-  amount      Float
-  description String?
-  reference   String?
-  createdAt   DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  type          String
+  amount        Float
+  description   String
+  reference     String?
+  category      String   @default("General")
+  paymentMethod String   @default("cash")
+  balance       Float    @default(0)
+  userId        Int?
+  orderId       Int?
+  createdAt     DateTime @default(now())
+  users         User?    @relation(fields: [userId], references: [id])
 
   @@map("cash_book")
 }
 
 model DailyReconciliation {
-  id             Int      @id @default(autoincrement())
-  date           DateTime
-  expectedAmount Float    @default(0)
-  actualAmount   Float    @default(0)
-  difference     Float    @default(0)
-  status         String   @default("PENDING")
-  notes          String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  date          String   @unique
+  openingFloat  Float    @default(0)
+  expectedCash  Float    @default(0)
+  countedCash   Float    @default(0)
+  variance      Float    @default(0)
+  totalSales    Float    @default(0)
+  totalExpenses Float    @default(0)
+  totalRefunds  Float    @default(0)
+  notes         String?
+  status        String   @default("pending")
+  reconciledBy  Int?
+  createdAt     DateTime @default(now())
 
   @@map("daily_reconciliations")
 }
 
-model ActivityLog {
-  id          Int      @id @default(autoincrement())
-  userId      Int?
-  action      String
-  entity      String?
-  entityId    String?
-  description String?
-  metadata    String?
-  createdAt   DateTime @default(now())
-
-  user User? @relation(fields: [userId], references: [id])
-
-  @@map("activity_logs")
-}
-
 model Setting {
-  id          Int      @id @default(autoincrement())
-  key         String   @unique
-  value       String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  key       String   @id
+  value     String?
+  updatedAt DateTime @default(now()) @updatedAt
 
   @@map("settings")
 }
 
 model Feedback {
-  id         Int      @id @default(autoincrement())
-  customerId Int?
-  rating     Int?
-  message    String?
-  response   String?
-  status     String   @default("PENDING")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  customer Customer? @relation(fields: [customerId], references: [id])
+  id           Int       @id @default(autoincrement())
+  customerId   Int?
+  customerName String?
+  rating       Int
+  comment      String?
+  category     String?
+  createdAt    DateTime  @default(now())
+  customer     Customer? @relation(fields: [customerId], references: [id])
 
   @@map("feedback")
 }
@@ -402,8 +407,7 @@ model CustomerStatement {
   description String?
   reference   String?
   createdAt   DateTime @default(now())
-
-  customer Customer @relation(fields: [customerId], references: [id])
+  customer    Customer @relation(fields: [customerId], references: [id])
 
   @@map("customer_statements")
 }
@@ -412,99 +416,73 @@ model OtpCode {
   id        Int      @id @default(autoincrement())
   userId    Int
   code      String
-  type      String
+  purpose   String
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
 
   @@map("otp_codes")
 }
 
 model Notification {
   id        Int      @id @default(autoincrement())
-  userId    Int?
+  type      String
   title     String
   message   String
-  type      String?
+  data      String?
   isRead    Boolean  @default(false)
+  userId    Int?
   createdAt DateTime @default(now())
-
-  user User? @relation(fields: [userId], references: [id])
 
   @@map("notifications")
 }
 
 model OnlineOrder {
   id              Int      @id @default(autoincrement())
-  customerId      Int?
   orderNumber     String   @unique
-  status          String   @default("PENDING")
-  subtotal        Float    @default(0)
-  discount        Float    @default(0)
+  customerId      Int?
+  customerName    String
+  customerPhone   String?
+  customerEmail   String?
+  items           String   @default("[]")
   total           Float    @default(0)
-  paymentStatus   String   @default("PENDING")
-  shippingAddress String?
+  deliveryAddress String?
+  paymentMethod   String   @default("cash_on_delivery")
+  status          String   @default("pending")
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  customer Customer? @relation(fields: [customerId], references: [id])
-
   @@map("online_orders")
 }
 
-model SessionAudit {
+model ActivityLog {
+  @@map("activity_log")
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  username   String?
+  action     String
+  entityType String?
+  entityId   String?
+  details    String?
+  createdAt  DateTime @default(now())
+  ipAddress  String?
+  users      User?    @relation(fields: [userId], references: [id])
+}
+
+model CashFloat {
+  @@map("cash_float")
   id        Int      @id @default(autoincrement())
-  userId    Int
-  sessionId String
-  action    String
-  ipAddress String?
-  userAgent String?
+  date      String
+  type      String
+  amount    Float    @default(0)
+  notes     String?
+  userId    Int?
   createdAt DateTime @default(now())
-
-  user User @relation(fields: [userId], references: [id])
-
-  @@map("session_audits")
 }
 
-enum SalaryPaymentStatus {
-  PENDING
-  PAID
-  CANCELLED
-}
-
-enum SalaryConfirmationStatus {
-  AWAITING_CONFIRMATION
-  CONFIRMED
-}
-
-enum SalaryDisputeStatus {
-  NONE
-  DISPUTED
-  RESOLVED
-}
-
-model SalaryPayment {
-  id                 Int                      @id @default(autoincrement())
-  employeeId         Int
-  createdById        Int
-  amount             Float
-  paymentDate        DateTime                 @default(now())
-  paymentMethod      String
-  reference          String?
-  status             SalaryPaymentStatus      @default(PENDING)
-  confirmationStatus SalaryConfirmationStatus @default(AWAITING_CONFIRMATION)
-  disputeStatus      SalaryDisputeStatus      @default(NONE)
-  confirmationDate   DateTime?
-  disputeReason      String?
-  notes              String?
-  createdAt          DateTime                 @default(now())
-  updatedAt          DateTime                 @updatedAt
-
-  employee  User @relation("SalaryEmployee", fields: [employeeId], references: [id])
-  createdBy User @relation("SalaryCreator", fields: [createdById], references: [id])
-
-  @@map("salary_payments")
+model playing_with_neon {
+  id    Int    @id @default(autoincrement())
+  name  String
+  value Float? @db.Real
 }
